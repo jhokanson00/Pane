@@ -1,0 +1,48 @@
+name: Bug report
+description: Something in Pane doesn't work as expected.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting! **Help ▸ Report a Bug…** in Pane fills in the versions below.
+        Please don't attach recordings or screenshots that show private information.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: What did you expect, and what happened instead?
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Turn on …
+        2. Record …
+        3. Click …
+  - type: input
+    id: app-version
+    attributes:
+      label: Pane version
+      placeholder: "1.0.0 (1)"
+    validations:
+      required: true
+  - type: input
+    id: macos-version
+    attributes:
+      label: macOS version
+      placeholder: "26.0 (25A354)"
+    validations:
+      required: true
+  - type: input
+    id: mac
+    attributes:
+      label: Mac
+      placeholder: "Mac15,3, Apple silicon"
+  - type: textarea
+    id: more
+    attributes:
+      label: Anything else?
+      description: Camera or microphone model, display setup, or settings you changed.

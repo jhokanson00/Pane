@@ -1,0 +1,137 @@
+import CoreGraphics
+import Foundation
+
+/// A piece of text seen in one sampled frame.
+public struct TextBox: Codable, Sendable, Equatable {
+    public var text: String
+    /// Normalized, bottom-left origin.
+    public var rect: CGRect
+    public var kind: SensitiveKind
+
+    public init(text: String, rect: CGRect, kind: SensitiveKind) {
+        self.text = text
+        self.rect = rect
+        self.kind = kind
+    }
+}
+
+/// Everything recognized in one sampled frame.
+public struct FrameText: Codable, Sendable {
+    public var time: Double
+    /// Sensitive matches found by the detector.
+    public var matches: [TextBox]
+    /// Every word on screen, so you can pick extra text to blur after the scan.
+    public var words: [TextBox]
+}
+
+/// Links per-frame detections into findings that follow text as it moves.
+public enum FindingTracker {
+    /// - Parameters:
+    ///   - frames: Sampled frames sorted by time; only `boxes(frame)` are tracked.
+    ///   - interval: Seconds between samples, used to pad start/end times.
+    public static func build(
+        frames: [FrameText],
+        boxes: (FrameText) -> [TextBox],
+        interval: Double,
+        duration: Double
+    ) -> [Finding] {
+        struct Track {
+            var finding: Finding
+            var key: String
+            var lastTime: Double
+            var lastRect: CGRect
+        }
+
+        // Allow a detection to drop out for a sample or two (blurry mid-scroll frames)
+        // without splitting it into two findings.
+        let maxGap = max(1.0, interval * 3)
+        var active: [Track] = []
+        var finished: [Finding] = []
+
+        for frame in frames {
+            active.removeAll { track in
+                guard frame.time - track.lastTime > maxGap else { return false }
+                finished.append(track.finding)
+                return true
+            }
+
+            var used = Set<Int>()
+            for box in boxes(frame) {
+                let key = normalize(box.text)
+                var best: Int?
+                var bestScore = 0.0
+                for (index, track) in active.enumerated()
+                where !used.contains(index) && track.finding.kind == box.kind {
+                    let sameText = track.key == key
+                    let overlap = iou(track.lastRect, box.rect)
+                    // Same text may have scrolled anywhere; different text (an OCR misread)
+                    // must be in roughly the same spot.
+                    let plausible = sameText ? centerDistance(track.lastRect, box.rect) < 0.6 : overlap > 0.3
+                    let score = (sameText ? 1 : 0) + overlap
+                    if plausible && score > bestScore {
+                        best = index
+                        bestScore = score
+                    }
+                }
+
+                let sample = BoxSample(time: frame.time, rect: box.rect)
+                if let best {
+                    active[best].finding.samples.append(sample)
+                    active[best].lastTime = frame.time
+                    active[best].lastRect = box.rect
+                    used.insert(best)
+                } else {
+                    let finding = Finding(kind: box.kind, text: box.text, samples: [sample],
+                                          start: frame.time, end: frame.time)
+                    active.append(Track(finding: finding, key: key, lastTime: frame.time, lastRect: box.rect))
+                    used.insert(active.count - 1)
+                }
+            }
+        }
+        finished += active.map(\.finding)
+
+        // Text may have appeared just after the previous sample and stayed until just
+        // before the next one, so cover those gaps too.
+        let pad = interval + 0.1
+        return finished
+            .map { finding in
+                var finding = finding
+                finding.start = max(0, (finding.samples.first?.time ?? 0) - pad)
+                finding.end = min(duration, (finding.samples.last?.time ?? 0) + pad)
+                return finding
+            }
+            .sorted { $0.start < $1.start }
+    }
+
+    /// Follows one word or phrase through the whole recording, wherever it appears.
+    public static func track(text: String, kind: SensitiveKind = .customWord,
+                             frames: [FrameText], interval: Double, duration: Double) -> [Finding] {
+        let key = normalize(text)
+        return build(
+            frames: frames,
+            boxes: { frame in
+                frame.words
+                    .filter { normalize($0.text) == key }
+                    .map { TextBox(text: text, rect: $0.rect, kind: kind) }
+            },
+            interval: interval,
+            duration: duration
+        )
+    }
+
+    static func normalize(_ text: String) -> String {
+        text.lowercased().filter { !$0.isWhitespace }
+    }
+
+    static func iou(_ a: CGRect, _ b: CGRect) -> Double {
+        let intersection = a.intersection(b)
+        guard !intersection.isNull else { return 0 }
+        let i = intersection.width * intersection.height
+        let u = a.width * a.height + b.width * b.height - i
+        return u > 0 ? Double(i / u) : 0
+    }
+
+    static func centerDistance(_ a: CGRect, _ b: CGRect) -> Double {
+        Double(hypot(a.midX - b.midX, a.midY - b.midY))
+    }
+}
