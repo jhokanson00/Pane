@@ -193,7 +193,8 @@ final class RecorderModel: ObservableObject {
         }
         guard await Permissions.ensureScreenRecording() else {
             problem = .permission(.screenRecording,
-                "Pane needs Screen Recording access. Turn it on in System Settings, then click Quit & Reopen Pane.")
+                "Pane needs Screen Recording access. Turn it on in System Settings, then click Quit & Reopen Pane. "
+                + "If Pane is already on there, select it, remove it with the − button, and try again.")
             return
         }
         if micEnabled, !(await Permissions.requestCapture(.audio)) {
