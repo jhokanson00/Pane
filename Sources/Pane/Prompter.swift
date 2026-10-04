@@ -130,7 +130,7 @@ final class PrompterController: ObservableObject {
         hotKeys = PrompterHotKeys { [weak self] step in self?.nudge(lines: step) }
 
         guard listen else {
-            status = .problem("The microphone is off: use ⌃⌥↓ to move on.")
+            status = .problem("Microphone off: Control-Option ↓ moves on.")
             return
         }
         guard #available(macOS 26, *) else {
@@ -518,7 +518,7 @@ private struct PrompterStrip: View {
             Circle().fill(dotColor).frame(width: 7, height: 7)
             Text(statusText)
             Spacer()
-            Text("⌃⌥↑ again  ⌃⌥↓ skip")
+            Text("Control-Option ↑ again  ↓ skip")
                 .help("Control-Option-Up starts the sentence over; Control-Option-Down skips to the next one.")
         }
         .font(.system(size: 11, weight: .medium))

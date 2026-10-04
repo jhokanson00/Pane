@@ -48,6 +48,11 @@ struct PrompterView: View {
             .pickerStyle(.segmented)
             .frame(maxWidth: 320)
 
+            Text("While it's showing, press **Control-Option-↑** to start a sentence over, or **Control-Option-↓** to skip to the next one. Saying the sentence again works too.")
+                .font(.callout)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+
             HStack {
                 if prompter.isRehearsing {
                     Button("Stop Rehearsing") { prompter.end() }
