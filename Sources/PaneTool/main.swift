@@ -17,6 +17,7 @@
 //   swift run pane-tool zoom-export video.mp4 out.mp4 [subtle|strong]  pointer effects plus zoom toward clicks
 //   swift run pane-tool captions video.mp4 [out.mp4]  captions from the narration as SRT; optionally burned into a copy
 //   swift run pane-tool follow audio.wav script.txt  how closely the teleprompter follows the narration, live
+//   swift run pane-tool retakes video.mp4 script.txt  the retakes Pane would cut, from the narration and script
 import AppKit
 import AVFoundation
 import PaneKit
@@ -286,6 +287,20 @@ case "zoom-export":
 
 case "follow":
     try await FollowTool.run(args)
+
+case "retakes":
+    guard args.count == 3 else { fail("usage: pane-tool retakes <video or audio> <script.txt>") }
+    guard #available(macOS 26, *) else { fail("Needs macOS 26 or later") }
+    let script = PrompterScript(try String(contentsOfFile: args[2], encoding: .utf8))
+    let words = try await CaptionTranscriber.words(url: URL(fileURLWithPath: args[1]))
+    let retakes = RetakeFinder.find(script: script, words: words)
+    print("\(words.count) words heard, \(retakes.count) retake\(retakes.count == 1 ? "" : "s")")
+    for retake in retakes {
+        let cutWords = words.filter { $0.start >= retake.cut.lowerBound && $0.start < retake.cut.upperBound }
+        print(String(format: "cut %.2f–%.2f s (%.2f s): \"%@\"", retake.cut.lowerBound, retake.cut.upperBound,
+                     retake.cut.upperBound - retake.cut.lowerBound, cutWords.map(\.text).joined(separator: " ")))
+        print("   said again: \(retake.text)…")
+    }
 
 case "captions":
     // Captions from the narration, on device. The SRT goes to standard output; timing

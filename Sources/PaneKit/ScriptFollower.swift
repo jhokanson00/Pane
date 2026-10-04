@@ -97,12 +97,38 @@ public struct ScriptFollower: Sendable {
         return true
     }
 
+    /// A place the latest words line up with: the index after the last script word they
+    /// match, and how well they match.
+    public struct Match: Equatable, Sendable {
+        public let position: Int
+        public let score: Double
+    }
+
+    /// Every place near the current one that the latest heard words could end at, behind
+    /// or ahead (`RetakeFinder` uses the ones behind: words said again).
+    public func matches(for heard: [String]) -> [Match] {
+        let tail = Array(heard.dropFirst(min(heardBeforeJump, heard.count)).lazy
+            .map(PrompterScript.key).filter { !$0.isEmpty }.suffix(tuning.heardWords))
+        return candidates(for: tail)
+    }
+
     private func bestPosition(for heard: [String]) -> Int? {
+        var best: (position: Int, rank: Double)?
+        for match in candidates(for: heard) {
+            let step = match.position - position
+            guard step != 0, match.score >= required(step: step) else { continue }
+            let rank = match.score - tuning.distanceCost * Double(abs(step))
+            if best == nil || rank > best!.rank { best = (match.position, rank) }
+        }
+        return best?.position
+    }
+
+    private func candidates(for heard: [String]) -> [Match] {
         let words = script.words
-        guard !heard.isEmpty, !words.isEmpty else { return nil }
+        guard !heard.isEmpty, !words.isEmpty else { return [] }
         let lower = max(0, position - tuning.lookBack)
         let upper = min(words.count, position + tuning.lookAhead)
-        guard lower < upper else { return nil }
+        guard lower < upper else { return [] }
         let window = words[lower..<upper].map(\.key)
         let rows = heard.count, columns = window.count
 
@@ -119,18 +145,19 @@ public struct ScriptFollower: Sendable {
 
         // The match has to reach the newest word (or the one before it, which allows a last
         // word that's still half said), and end on a script word that matched it.
-        var best: (position: Int, rank: Double)?
+        var best: [Int: Double] = [:]
         for (row, allowance) in [(rows, 0.0), (rows - 1, -0.5)] where row >= 1 {
             for j in 1...columns where similarity(heard[row - 1], window[j - 1]) > 0 {
                 let total = score[row][j] + allowance
-                let candidate = lower + j
-                let step = candidate - position
-                guard step != 0, total >= required(step: step) else { continue }
-                let rank = total - tuning.distanceCost * Double(abs(step))
-                if best == nil || rank > best!.rank { best = (candidate, rank) }
+                if total > (best[lower + j] ?? 0) { best[lower + j] = total }
             }
         }
-        return best?.position
+        return best.map { Match(position: $0.key, score: $0.value) }.sorted { $0.position < $1.position }
+    }
+
+    /// Whether a heard word counts as the written one (the same, close, or half said).
+    func isSimilar(_ heard: String, _ written: String) -> Bool {
+        similarity(PrompterScript.key(heard), written) > 0
     }
 
     private func required(step: Int) -> Double {
