@@ -90,6 +90,8 @@ final class ScreenRecorder: NSObject, SCStreamOutput, SCStreamDelegate, @uncheck
     private var latestScreen: CVPixelBuffer?
     private var outputRect = CGRect.zero
     private var sessionStarted = false
+    /// Where the file's timeline begins: the first video frame.
+    private var sessionStart = CMTime.invalid
     private var isStopping = false
     private var startTime = 0.0
     private var lastFrameTime = 0.0
@@ -190,7 +192,7 @@ final class ScreenRecorder: NSObject, SCStreamOutput, SCStreamDelegate, @uncheck
             microphone = MicrophoneCapture(deviceID: options.microphoneID, queue: queue) { [weak self] sampleBuffer in
                 self?.microphoneTap?(sampleBuffer)
                 guard let self, !self.isStopping, self.sessionStarted else { return }
-                for piece in self.microphoneAudio.retime(sampleBuffer, pauses: self.pauses) {
+                for piece in self.microphoneAudio.retime(sampleBuffer, pauses: self.pauses) where self.isInSession(piece) {
                     self.appendAudio(piece, to: self.micInput)
                     self.clips?.appendMicrophone(piece)
                 }
@@ -321,6 +323,7 @@ final class ScreenRecorder: NSObject, SCStreamOutput, SCStreamDelegate, @uncheck
         lastVideoTime = now
         if !sessionStarted {
             writer.startSession(atSourceTime: now)
+            sessionStart = now
             clips?.start(at: now)
             sessionStarted = true
             startTime = now.seconds
@@ -355,13 +358,21 @@ final class ScreenRecorder: NSObject, SCStreamOutput, SCStreamDelegate, @uncheck
             break
         case .audio:
             guard sessionStarted else { return }
-            for piece in systemAudio.retime(sampleBuffer, pauses: pauses) {
+            for piece in systemAudio.retime(sampleBuffer, pauses: pauses) where isInSession(piece) {
                 appendAudio(piece, to: systemAudioInput)
                 clips?.appendSystemAudio(piece)
             }
         @unknown default:
             break
         }
+    }
+
+    /// Audio is timed by when it was heard, so the first buffer can begin a few
+    /// milliseconds before the first video frame. A fragmented file (see
+    /// `fragmentInterval`) can't hold that: writing fails at the first fragment, with
+    /// AVFoundation error -11800 (-16341). So that buffer is left out.
+    private func isInSession(_ sampleBuffer: CMSampleBuffer) -> Bool {
+        sampleBuffer.presentationTimeStamp >= sessionStart
     }
 
     private func appendAudio(_ sampleBuffer: CMSampleBuffer, to input: AVAssetWriterInput?) {

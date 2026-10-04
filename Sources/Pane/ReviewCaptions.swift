@@ -103,7 +103,7 @@ struct CaptionsSection: View {
                         .controlSize(.small)
                 case .idle, .failed:
                     if case .failed(let message) = session.captionState {
-                        Text(message).font(.caption).foregroundStyle(.red).lineLimit(3)
+                        WarningText(message, font: .caption, lineLimit: 3)
                     }
                     if let captions = session.captions {
                         made(captions)

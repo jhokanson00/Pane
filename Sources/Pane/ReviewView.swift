@@ -339,7 +339,7 @@ private struct ScanPrompt: View {
                 }
             } else {
                 if case .failed(let message) = state {
-                    Text(message).font(.caption).foregroundStyle(.red).lineLimit(3)
+                    WarningText(message, font: .caption, lineLimit: 3)
                 }
                 Text("Not scanned for sensitive info. Scan to find emails, phone numbers and keys, "
                      + "and to use Blur Text.")
@@ -603,7 +603,7 @@ private struct ExportPanel: View {
             switch session.exportState {
             case .idle, .failed:
                 if case .failed(let message) = session.exportState {
-                    Text(message).font(.callout).foregroundStyle(.red)
+                    WarningText(message)
                 }
                 Button {
                     session.export()

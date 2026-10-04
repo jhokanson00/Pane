@@ -201,7 +201,7 @@ private struct LastRecordingRow: View {
                     Button("Review") { model.reviewLastRecording() }
                         .help("Draw blur boxes and circles, or change the pointer effects, then export again")
                 case .failed(let message):
-                    Text(message).foregroundStyle(.red).lineLimit(2)
+                    WarningText(message, lineLimit: 2)
                     Spacer()
                     Button("Try Again") { model.autoBlur ? model.scanLastRecording() : model.addPointerEffects() }
                 }
@@ -218,22 +218,58 @@ struct ProblemView: View {
     let problem: RecorderModel.Problem
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text(problem.message)
-                .font(.callout)
-                .foregroundStyle(.red)
-                .fixedSize(horizontal: false, vertical: true)
-            HStack {
-                if case .permission(let pane, _) = problem {
-                    Button("Open System Settings") { Permissions.openSettings(pane) }
-                    if pane == .screenRecording || pane == .inputMonitoring {
-                        Button("Quit & Reopen Pane") { Permissions.relaunch() }
-                    }
-                }
-                Button("Dismiss") { model.problem = nil }
+        VStack(alignment: .leading, spacing: 8) {
+            WarningText(problem.message)
+            // Side by side when there's room; stacked in the narrow menu bar panel.
+            ViewThatFits(in: .horizontal) {
+                HStack { buttons }
+                VStack(alignment: .leading, spacing: 6) { buttons }
             }
             .controlSize(.small)
         }
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.red.opacity(0.12), in: RoundedRectangle(cornerRadius: 8))
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.red.opacity(0.35)))
+    }
+
+    @ViewBuilder
+    private var buttons: some View {
+        if case .permission(let pane, _) = problem {
+            Button("Open Settings") { Permissions.openSettings(pane) }
+            // Reopening ends a recording, so it's only offered when idle.
+            if pane == .screenRecording || pane == .inputMonitoring, model.state == .idle {
+                Button("Quit & Reopen") { Permissions.relaunch() }
+            }
+        }
+        Button("Dismiss") { model.problem = nil }
+    }
+}
+
+/// A warning that stays readable on any background: the icon carries the color, the text
+/// stays in the normal text color.
+struct WarningText: View {
+    let message: String
+    var font: Font = .callout
+    var lineLimit: Int?
+
+    init(_ message: String, font: Font = .callout, lineLimit: Int? = nil) {
+        self.message = message
+        self.font = font
+        self.lineLimit = lineLimit
+    }
+
+    var body: some View {
+        Label {
+            Text(message)
+                .foregroundStyle(.primary)
+                .lineLimit(lineLimit)
+                .fixedSize(horizontal: false, vertical: true)
+        } icon: {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .foregroundStyle(.red)
+        }
+        .font(font)
     }
 }
 
