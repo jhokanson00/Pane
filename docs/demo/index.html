@@ -21,7 +21,7 @@
   button { font: inherit; cursor: pointer; }
 
   /* Sidebar */
-  nav { width: 232px; flex: none; background: var(--side); color: #c9cfdc; padding: 20px 14px; display: flex; flex-direction: column; gap: 4px; }
+  nav { width: 256px; flex: none; background: var(--side); color: #c9cfdc; padding: 20px 14px; display: flex; flex-direction: column; gap: 4px; }
   .brand { display: flex; align-items: center; gap: 10px; color: #fff; font-weight: 700; font-size: 17px; padding: 4px 10px 18px; }
   .brand i { width: 26px; height: 26px; border-radius: 7px; background: linear-gradient(135deg, #5c7cfa, #22b8cf); display: inline-block; }
   nav a { padding: 9px 12px; border-radius: 8px; display: flex; justify-content: space-between; }
@@ -30,6 +30,8 @@
   nav .count { font-size: 12px; background: #2f3850; border-radius: 10px; padding: 1px 8px; }
   nav .section { font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: #6f7890; margin: 18px 12px 6px; }
   nav .me { margin-top: auto; display: flex; gap: 10px; align-items: center; padding: 10px; border-top: 1px solid #262e40; }
+  nav .me > div { min-width: 0; }
+  nav .me small { display: block; font-size: 12px; color: #6f7890; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .avatar { width: 32px; height: 32px; border-radius: 50%; display: grid; place-items: center; font-weight: 600; font-size: 13px; color: #fff; flex: none; }
 
   /* Main */
@@ -104,7 +106,7 @@
   <div class="section">Workspace</div>
   <a href="#" data-page="settings">Settings</a>
   <a href="#" data-page="settings">Developers</a>
-  <div class="me"><span class="avatar" style="background:#7048e8">MR</span><div>Morgan Reyes<br><small style="color:#6f7890">morgan.reyes@brightline.example</small></div></div>
+  <div class="me"><span class="avatar" style="background:#7048e8">MR</span><div>Morgan Reyes<small>morgan@brightline.example</small></div></div>
 </nav>
 
 <main>
