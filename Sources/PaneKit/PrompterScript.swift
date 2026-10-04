@@ -101,3 +101,29 @@ public struct PrompterScript: Sendable, Equatable {
         "nineteen": 19, "twenty": 20,
     ]
 }
+
+extension PrompterScript {
+    /// The script a recording was made with, stored in the video file's extended
+    /// attributes like the pointer log, so retakes can be found later.
+    static let attributeName = "com.jacobhokanson.pane.script"
+
+    public static func save(_ text: String, to url: URL) throws {
+        let data = Data(text.utf8)
+        let result = data.withUnsafeBytes { bytes in
+            setxattr(url.path, attributeName, bytes.baseAddress, bytes.count, 0, 0)
+        }
+        if result != 0 { throw CocoaError(.fileWriteUnknown) }
+    }
+
+    /// The script recorded with `url`, or nil if it wasn't recorded with the teleprompter.
+    public static func load(from url: URL) -> String? {
+        let size = getxattr(url.path, attributeName, nil, 0, 0, 0)
+        guard size > 0 else { return nil }
+        var data = Data(count: size)
+        let read = data.withUnsafeMutableBytes { bytes in
+            getxattr(url.path, attributeName, bytes.baseAddress, size, 0, 0)
+        }
+        guard read == size else { return nil }
+        return String(data: data, encoding: .utf8)
+    }
+}

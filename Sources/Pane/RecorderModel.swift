@@ -104,6 +104,9 @@ final class RecorderModel: ObservableObject {
     private let countdown = CountdownOverlay()
     private var recorder: ScreenRecorder?
     private var pointerRecorder: PointerRecorder?
+    /// The teleprompter script this recording was made with, saved into the file so
+    /// Review can find retakes.
+    private var recordedScript: String?
     private var distractionGuard: DistractionGuard?
     private var startTime: CFTimeInterval?
     /// For the elapsed time, which counts only time actually recorded.
@@ -232,6 +235,7 @@ final class RecorderModel: ObservableObject {
             prompter.begin(on: target.screen, listen: micEnabled, ownMicrophone: false, microphoneID: micID)
             prompter.pause()
         }
+        recordedScript = usesPrompter ? prompter.scriptText : nil
 
         let finished = await countdown.run(seconds: 3, on: target.screen) { [weak self] in
             self?.state != .countingDown
@@ -318,6 +322,7 @@ final class RecorderModel: ObservableObject {
         do {
             let url = try await recorder.stop()
             savePointer(for: url)
+            if let recordedScript { try? PrompterScript.save(recordedScript, to: url) }
             lastRecordingURL = url
             reviewSession?.close()
             reviewSession = nil
@@ -491,6 +496,7 @@ final class RecorderModel: ObservableObject {
     }
 
     private func resetAfterRecording() {
+        recordedScript = nil
         if !PrompterController.shared.isRehearsing { PrompterController.shared.end() }
         timer?.invalidate()
         timer = nil

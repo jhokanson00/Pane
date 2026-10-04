@@ -21,12 +21,18 @@ extension ReviewSession {
     func makeCaptions() {
         guard captionTask == nil else { return }
         guard #available(macOS 26, *) else { return }
+        let language = Locale.current.language.languageCode?.identifier ?? "en"
+        // Already heard (looking for retakes): captions come straight from those words.
+        if let spokenWords {
+            captions = Captions(words: spokenWords, language: language)
+            return
+        }
         captionState = .working("Getting ready…", 0)
         let source = sourceURL
         captionTask = Task {
-            let result: Result<Captions, Error>
+            let result: Result<[CaptionWord], Error>
             do {
-                result = .success(try await CaptionTranscriber.transcribe(url: source) { stage in
+                result = .success(try await CaptionTranscriber.words(url: source) { stage in
                     Task { @MainActor [weak self] in
                         guard let self, case .working = self.captionState else { return }
                         switch stage {
@@ -41,8 +47,9 @@ extension ReviewSession {
             // A cancelled run leaves everything to whatever came after it.
             guard !Task.isCancelled else { return }
             switch result {
-            case .success(let made):
-                captions = made
+            case .success(let words):
+                spokenWords = words
+                captions = Captions(words: words, language: language)
                 captionState = .idle
             case .failure(let error):
                 captionState = error is CancellationError ? .idle : .failed(error.localizedDescription)
@@ -61,15 +68,28 @@ extension ReviewSession {
     /// - Parameter cameraSeparate: The camera is its own layer, so the captions don't
     ///   need to stay clear of where it was.
     func captionEffect(cameraSeparate: Bool) -> (any FrameEffect)? {
-        guard burnCaptions, let captions else { return nil }
+        guard burnCaptions, let captions = exportCaptions else { return nil }
         return CaptionRenderer(captions: captions, videoSize: videoSize,
                                cameraCircle: cameraSeparate ? nil : pointer?.cameraCircle)
     }
 
+    /// The captions as exported: without the words in cut retakes, which are made again
+    /// from the words left so no caption repeats a flubbed line.
+    var exportCaptions: Captions? {
+        guard let captions else { return nil }
+        let cuts = cuts
+        guard !cuts.isEmpty, let spokenWords else { return captions }
+        let kept = spokenWords.filter { word in
+            let middle = (word.start + word.end) / 2
+            return !cuts.contains { $0.contains(middle) }
+        }
+        return Captions(words: kept, language: captions.language)
+    }
+
     /// Saves the captions as "<video name>.srt" next to an exported video.
-    /// - Parameter trim: The part the video kept, so the captions match its times.
-    func saveCaptions(besideVideo video: URL, trim: ClosedRange<Double>?) throws {
-        guard let captions = captions?.trimmed(to: trim), !captions.cues.isEmpty else { return }
+    /// - Parameter edit: What the video kept, so the captions match its times.
+    func saveCaptions(besideVideo video: URL, edit: VideoEdit) throws {
+        guard let captions = exportCaptions?.edited(edit, duration: duration), !captions.cues.isEmpty else { return }
         try captions.srt.write(to: Self.captionsURL(for: video), atomically: true, encoding: .utf8)
     }
 

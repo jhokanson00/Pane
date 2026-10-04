@@ -59,6 +59,11 @@ struct ReviewTimeline: View {
                     Lane(label: { LaneTitle(symbol: "film", text: "Video") }) { width in
                         TrimTrack(session: session, width: width)
                     }
+                    if session.script != nil {
+                        Lane(label: { RetakeLabel(session: session) }) { width in
+                            RetakeTrack(session: session, width: width)
+                        }
+                    }
                     if !session.findings.isEmpty {
                         ScrollView(.vertical) {
                             VStack(spacing: Self.laneSpacing) {
@@ -77,7 +82,7 @@ struct ReviewTimeline: View {
                             ClickTrack(session: session, clicks: clicks, width: width)
                         }
                     }
-                    if let captions = session.captions, !captions.cues.isEmpty {
+                    if let captions = session.exportCaptions, !captions.cues.isEmpty {
                         Lane(label: { LaneTitle(symbol: "captions.bubble", text: "Captions") }) { width in
                             CaptionTrack(session: session, captions: captions, width: width)
                         }
@@ -94,6 +99,13 @@ struct ReviewTimeline: View {
                 Text(summary)
                     .monospacedDigit()
                     .foregroundStyle(.secondary)
+                if !session.retakes.isEmpty {
+                    if session.retakes.allSatisfy(\.isCut) {
+                        Button("Keep All Retakes") { session.setAllRetakes(cut: false) }
+                    } else {
+                        Button("Cut All Retakes") { session.setAllRetakes(cut: true) }
+                    }
+                }
                 if session.trim != nil {
                     Button("Clear Trim") { session.clearTrim() }
                         .help("Keep the whole video again")
@@ -105,9 +117,18 @@ struct ReviewTimeline: View {
     }
 
     private var summary: String {
-        guard let trim = session.trim else { return "Keeping the whole video" }
-        return "Keeping \(ReviewSession.format(trim.lowerBound))–\(ReviewSession.format(trim.upperBound)) "
-            + "(\(ReviewSession.format(trim.upperBound - trim.lowerBound)))"
+        var parts: [String] = []
+        if let trim = session.trim {
+            parts.append("Keeping \(ReviewSession.format(trim.lowerBound))–\(ReviewSession.format(trim.upperBound)) "
+                         + "(\(ReviewSession.format(trim.upperBound - trim.lowerBound)))")
+        }
+        let cut = session.retakes.filter(\.isCut).count
+        if cut > 0 {
+            parts.append("cutting \(cut) retake\(cut == 1 ? "" : "s") (\(String(format: "%.1f", session.cutLength)) s)")
+        }
+        guard !parts.isEmpty else { return "Keeping the whole video" }
+        let text = parts.joined(separator: ", ")
+        return text.prefix(1).uppercased() + text.dropFirst()
     }
 }
 
@@ -261,6 +282,14 @@ private struct TrimTrack: View {
                 .frame(width: max(end - start, 2))
                 .offset(x: start)
                 .allowsHitTesting(false)
+            // What the cut retakes leave out.
+            ForEach(Array(session.cuts.enumerated()), id: \.offset) { _, cut in
+                Rectangle()
+                    .fill(Color.red.opacity(0.45))
+                    .frame(width: max(scale.x(cut.upperBound) - scale.x(cut.lowerBound), 2))
+                    .offset(x: scale.x(cut.lowerBound))
+                    .allowsHitTesting(false)
+            }
             EdgeHandle(color: .accentColor) { x in
                 session.setTrim(start: scale.time(x))
                 session.seek(to: session.keptRange.lowerBound)
@@ -376,5 +405,67 @@ private struct Playhead: View {
                 .frame(width: 2, height: geo.size.height)
                 .offset(x: x - 1)
         }
+    }
+}
+
+// MARK: - Retakes
+
+private struct RetakeLabel: View {
+    @ObservedObject var session: ReviewSession
+
+    var body: some View {
+        HStack(spacing: 5) {
+            Image(systemName: "arrow.uturn.backward").frame(width: 16)
+            switch session.retakeState {
+            case .working(let text):
+                ProgressView().controlSize(.mini)
+                Text(text).lineLimit(1)
+            case .failed:
+                Text("Retakes: couldn't look").lineLimit(1)
+            case .idle:
+                Text(session.retakes.isEmpty ? "No retakes" : "Retakes")
+            }
+        }
+        .font(.caption)
+        .foregroundStyle(.secondary)
+        .help(session.retakeState.failureMessage ?? "Sentences you said again. Click one to keep or cut its first try.")
+    }
+}
+
+/// Each retake's first try: red when it's cut from exports, an outline when it's kept.
+/// Click one to switch.
+private struct RetakeTrack: View {
+    @ObservedObject var session: ReviewSession
+    let width: CGFloat
+
+    var body: some View {
+        let scale = TimeScale(duration: session.duration, width: width)
+        ZStack(alignment: .leading) {
+            SeekArea(session: session, width: width)
+            ForEach(session.retakes) { item in
+                let start = scale.x(item.retake.cut.lowerBound)
+                let length = max(scale.x(item.retake.cut.upperBound) - start, 4)
+                RoundedRectangle(cornerRadius: 3)
+                    .fill(item.isCut ? Color.red.opacity(0.7) : Color.clear)
+                    .overlay(RoundedRectangle(cornerRadius: 3).stroke(Color.red.opacity(0.8), lineWidth: 1))
+                    .frame(width: length)
+                    .offset(x: start)
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        session.setRetake(item.id, cut: !item.isCut)
+                        session.seek(to: item.retake.cut.lowerBound)
+                    }
+                    .help((item.isCut ? "Cut: " : "Kept: ") + "\"\(item.retake.text)…\" said again. Click to "
+                          + (item.isCut ? "keep this try." : "cut this try."))
+            }
+        }
+        .coordinateSpace(name: "track")
+    }
+}
+
+extension ReviewSession.RetakeState {
+    var failureMessage: String? {
+        if case .failed(let message) = self { return message }
+        return nil
     }
 }

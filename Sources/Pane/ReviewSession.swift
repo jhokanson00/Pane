@@ -85,6 +85,17 @@ final class ReviewSession: ObservableObject, Identifiable {
     }
     @Published var captionState: CaptionState = .idle
     var captionTask: Task<Void, Never>?
+    /// The narration's words with their times, from speech recognition, once heard.
+    /// Captions and retakes share them (see ReviewRetakes.swift).
+    @Published var spokenWords: [CaptionWord]?
+    /// The teleprompter script the recording was made with, if it was.
+    let script: PrompterScript?
+    /// Sentences said again, each cut from exports unless kept.
+    @Published var retakes: [RetakeCut] = [] {
+        didSet { updatePointerEffects() }
+    }
+    @Published var retakeState: RetakeState = .idle
+    var retakeTask: Task<Void, Never>?
 
     /// What the text scan read, once the recording has been scanned. Blur Text needs it.
     @Published private(set) var scan: ScanResult?
@@ -105,6 +116,7 @@ final class ReviewSession: ObservableObject, Identifiable {
         self.pointerStyle = pointerStyle
         shortcuts = ShortcutTrack.load(from: sourceURL)
         showShortcuts = ShortcutBadgeRenderer.shownInExports
+        script = PrompterScript.load(from: sourceURL).map(PrompterScript.init)
 
         // The player shows the same blur and pointer effects the export will write.
         let item = AVPlayerItem(url: sourceURL)
@@ -125,13 +137,18 @@ final class ReviewSession: ObservableObject, Identifiable {
         timeObserver = player.addPeriodicTimeObserver(
             forInterval: CMTime(value: 1, timescale: 30), queue: .main
         ) { [weak self] time in
-            MainActor.assumeIsolated { self?.currentTime = time.seconds }
+            MainActor.assumeIsolated {
+                self?.currentTime = time.seconds
+                self?.skipCutWhilePlaying(at: time.seconds)
+            }
         }
         // The Pointer effects switch, in settings or here, applies right away. (It sends
         // the new value before the setting itself changes.)
         pointerSwitch = RecorderModel.shared.$pointerEffects.dropFirst().sink { [weak self] on in
             MainActor.assumeIsolated { self?.updatePointerEffects(enabled: on) }
         }
+        // A recording made with the teleprompter: look for retakes straight away.
+        if script != nil { findRetakes() }
     }
 
     func close() {
@@ -140,6 +157,7 @@ final class ReviewSession: ObservableObject, Identifiable {
         timeObserver = nil
         exportTask?.cancel()
         captionTask?.cancel()
+        retakeTask?.cancel()
     }
 
     var destinationURL: URL { Self.editedURL(for: sourceURL) }
@@ -289,16 +307,18 @@ final class ReviewSession: ObservableObject, Identifiable {
         let findings = findings
         let effects = frameEffects()
         let trim = trim
+        let cuts = cuts
         let clickSounds = self.clickSounds()
         exportTask = Task {
             do {
                 try await RedactionExporter.export(source: source, to: destination, findings: findings,
-                                                   effects: effects, clickSounds: clickSounds, timeRange: trim) { value in
+                                                   effects: effects, clickSounds: clickSounds, timeRange: trim,
+                                                   cuts: cuts) { value in
                     Task { @MainActor [weak self] in
                         if case .exporting = self?.exportState { self?.exportState = .exporting(value) }
                     }
                 }
-                try saveCaptions(besideVideo: destination, trim: trim)
+                try saveCaptions(besideVideo: destination, edit: VideoEdit(trim: trim, cuts: cuts))
                 exportState = .done(destination)
             } catch is CancellationError {
                 exportState = .idle
@@ -333,7 +353,8 @@ final class ReviewSession: ObservableObject, Identifiable {
         // drawn everywhere, including where the camera was. Captions go over as Final Cut
         // captions instead of being drawn in.
         let effects = frameEffects(cameraSeparate: separate).filter { !($0 is CaptionRenderer) }
-        let captions = captions
+        let captions = exportCaptions
+        let cuts = cuts
         let name = sourceURL.deletingPathExtension().lastPathComponent
         let source = separate ? clips.screen : sourceURL
         let folder = finalCutFolder
@@ -346,7 +367,7 @@ final class ReviewSession: ObservableObject, Identifiable {
                 let project = try await FinalCutHandoff.prepare(
                     name: name, screen: source, camera: separate ? clips.camera : nil, findings: findings,
                     effects: effects, clicks: clicks, clickSounds: clickSounds, in: folder, trim: trim,
-                    captions: captions
+                    cuts: cuts, captions: captions
                 ) { value in
                     Task { @MainActor [weak self] in
                         if case .exporting = self?.exportState { self?.exportState = .exporting(value) }
