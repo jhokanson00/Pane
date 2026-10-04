@@ -153,8 +153,9 @@ final class FinalCutProjectTests: XCTestCase {
         let trimmedWithSounds = { var p = self.projectWithClickSounds; p.trim = 90..<375; return p }()
         let captionsOnly = { var p = self.captioned; p.camera = nil; p.markers = []; return p }()
         let everything = { var p = trimmedWithSounds; p.captions = self.captioned.captions; return p }()
+        let everythingCut = { var p = everything; p.cuts = [150..<180, 240..<260]; return p }()
         for project in [project, plain, trimmed, projectWithClickSounds, soundsOnly, trimmedWithSounds, captioned,
-                        captionsOnly, everything] {
+                        captionsOnly, everything, everythingCut] {
             let file = FileManager.default.temporaryDirectory.appendingPathComponent("pane-\(UUID()).fcpxml")
             try project.xml.write(to: file, atomically: true, encoding: .utf8)
             defer { try? FileManager.default.removeItem(at: file) }
@@ -169,5 +170,22 @@ final class FinalCutProjectTests: XCTestCase {
             let message = String(data: errors.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
             XCTAssertEqual(lint.terminationStatus, 0, message)
         }
+    }
+
+    /// A retake cut from frames 150–180 inside the 90–375 trim: two screen clips back to
+    /// back, each with its own camera and only its own clicks; a click in the cut is left out.
+    func testCutsMakeOneClipPerPartKept() {
+        var cut = trimmed
+        cut.cuts = [150..<180]
+        cut.markers = [(4.0, "Click"), (5.5, "Click"), (7.0, "Click")]  // frames 120, 165 (cut), 210
+        let xml = cut.xml
+        XCTAssertTrue(xml.contains(#"<sequence format="r1" duration="255/30s""#), "285 frames less 30 cut")
+        XCTAssertTrue(xml.contains(#"<asset-clip ref="r2" offset="0s" name="Screen" start="90/30s" duration="60/30s""#))
+        XCTAssertTrue(xml.contains(#"<asset-clip ref="r2" offset="60/30s" name="Screen" start="180/30s" duration="195/30s""#))
+        XCTAssertTrue(xml.contains(#"<asset-clip ref="r3" lane="1" offset="90/30s" name="Camera" start="90/30s" duration="60/30s"/>"#))
+        XCTAssertTrue(xml.contains(#"<asset-clip ref="r3" lane="1" offset="180/30s" name="Camera" start="180/30s" duration="195/30s"/>"#))
+        XCTAssertTrue(xml.contains(#"<marker start="120/30s""#))
+        XCTAssertTrue(xml.contains(#"<marker start="210/30s""#))
+        XCTAssertFalse(xml.contains(#"<marker start="165/30s""#))
     }
 }

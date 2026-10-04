@@ -21,6 +21,9 @@ public struct FinalCutProject: Sendable {
     /// The frames kept on the timeline; nil keeps them all. The files stay whole, so the
     /// trim can still be undone or changed in Final Cut by dragging the clip's ends.
     public var trim: Range<Int>?
+    /// Frames left out from inside the trim (retakes): the screen becomes one clip per
+    /// part kept, back to back, and dragging a clip's end brings a cut part back.
+    public var cuts: [Range<Int>] = []
     /// Sounds such as the click sound, connected below the screen at their moments.
     public var soundEffects: [SoundEffect] = []
     /// Captions from the narration. Final Cut keeps them as a caption role, where they
@@ -54,11 +57,10 @@ public struct FinalCutProject: Sendable {
             ? #" hasAudio="1" audioSources="\#(audioTracks)" audioChannels="\#(audioChannels)" audioRate="48000""#
             : ""
         let clipFrames = camera == nil ? frames : min(frames, cameraFrames)
-        // The camera and markers inside the screen clip are placed on the files' own
-        // timeline, so a trim only moves the clips' starts and shortens them.
-        let kept = keptFrames
-        let cameraKept = kept.clamped(to: 0..<clipFrames)
-        let clipStart = kept.lowerBound == 0 ? "" : #" start="\#(time(kept.lowerBound))""#
+        // The camera and markers inside each screen clip are placed on the files' own
+        // timeline, so a trim or cut only moves the clips' starts and shortens them.
+        let segments = keptSegments
+        let total = segments.reduce(0) { $0 + $1.count }
         var lines = [
             #"<?xml version="1.0" encoding="UTF-8"?>"#,
             "<!DOCTYPE fcpxml>",
@@ -82,23 +84,29 @@ public struct FinalCutProject: Sendable {
             "    </resources>",
             #"    <event name="Pane">"#,
             #"        <project name="\#(escape(name))">"#,
-            #"            <sequence format="r1" duration="\#(time(kept.count))" tcStart="0s" tcFormat="NDF" audioLayout="stereo" audioRate="48k">"#,
+            #"            <sequence format="r1" duration="\#(time(total))" tcStart="0s" tcFormat="NDF" audioLayout="stereo" audioRate="48k">"#,
             "                <spine>",
-            #"                    <asset-clip ref="r2" offset="0s" name="Screen"\#(clipStart) duration="\#(time(kept.count))" tcFormat="NDF"\#(audioTracks > 0 ? #" audioRole="dialogue""# : "")>"#,
         ]
-        if camera != nil, !cameraKept.isEmpty {
-            lines.append(#"                        <asset-clip ref="r3" lane="1" offset="\#(time(cameraKept.lowerBound))" name="Camera"\#(clipStart) duration="\#(time(cameraKept.count))"/>"#)
-        }
-        lines += soundEffectClips
-        lines += captionLines(lane: camera == nil ? 1 : 2)
-        for marker in markers {
-            let frame = min(max(Int((marker.time * Double(frameRate)).rounded()), 0), max(frames - 1, 0))
-            // Clicks in the trimmed-off parts are left out.
-            guard trim == nil || kept.contains(frame) else { continue }
-            lines.append(#"                        <marker start="\#(time(frame))" duration="1/\#(frameRate)s" value="\#(escape(marker.label))"/>"#)
+        var offset = 0
+        for (index, kept) in segments.enumerated() {
+            let cameraKept = kept.clamped(to: 0..<clipFrames)
+            let clipStart = kept.lowerBound == 0 ? "" : #" start="\#(time(kept.lowerBound))""#
+            lines.append(#"                    <asset-clip ref="r2" offset="\#(time(offset))" name="Screen"\#(clipStart) duration="\#(time(kept.count))" tcFormat="NDF"\#(audioTracks > 0 ? #" audioRole="dialogue""# : "")>"#)
+            if camera != nil, !cameraKept.isEmpty {
+                lines.append(#"                        <asset-clip ref="r3" lane="1" offset="\#(time(cameraKept.lowerBound))" name="Camera"\#(cameraKept.lowerBound == 0 ? "" : #" start="\#(time(cameraKept.lowerBound))""#) duration="\#(time(cameraKept.count))"/>"#)
+            }
+            lines += soundEffectClips(in: kept)
+            lines += captionLines(lane: camera == nil ? 1 : 2, in: kept, clip: index)
+            for marker in markers {
+                let frame = min(max(Int((marker.time * Double(frameRate)).rounded()), 0), max(frames - 1, 0))
+                // Clicks in the parts left out get no marker.
+                guard kept.contains(frame) else { continue }
+                lines.append(#"                        <marker start="\#(time(frame))" duration="1/\#(frameRate)s" value="\#(escape(marker.label))"/>"#)
+            }
+            lines.append("                    </asset-clip>")
+            offset += kept.count
         }
         lines += [
-            "                    </asset-clip>",
             "                </spine>",
             "            </sequence>",
             "        </project>",
@@ -114,22 +122,34 @@ public struct FinalCutProject: Sendable {
         trim.map { $0.clamped(to: 0..<max(frames, 1)) } ?? 0..<frames
     }
 
+    /// The parts kept, in order: the trim less the cuts.
+    var keptSegments: [Range<Int>] {
+        var parts: [Range<Int>] = []
+        var start = keptFrames.lowerBound
+        for cut in cuts.sorted(by: { $0.lowerBound < $1.lowerBound }) where cut.upperBound > start {
+            if cut.lowerBound > start { parts.append(start..<min(cut.lowerBound, keptFrames.upperBound)) }
+            start = max(start, cut.upperBound)
+        }
+        if start < keptFrames.upperBound { parts.append(start..<keptFrames.upperBound) }
+        return parts.filter { !$0.isEmpty }.isEmpty ? [keptFrames] : parts.filter { !$0.isEmpty }
+    }
+
     /// iTT captions connected to the screen clip, on whole frames and never overlapping,
     /// which Final Cut requires within a caption role. Like the markers they're placed on
     /// the screen file's own timeline, so a trim cuts off the parts outside it.
-    private func captionLines(lane: Int) -> [String] {
+    private func captionLines(lane: Int, in kept: Range<Int>, clip: Int) -> [String] {
         guard let captions, !captions.cues.isEmpty, frames > 0 else { return [] }
         func time(_ frames: Int) -> String { frames == 0 ? "0s" : "\(frames)/\(frameRate)s" }
         let role = "iTT?captionFormat=ITT.\(captions.language)"
         var lines: [String] = []
-        let kept = keptFrames
         var free = kept.lowerBound
         for (index, cue) in captions.cues.enumerated() {
             let start = max(Int((cue.start * Double(frameRate)).rounded()), free)
             let end = min(Int((cue.end * Double(frameRate)).rounded()), kept.upperBound)
             guard end > start else { continue }
             free = end
-            let style = "ts\(index + 1)"
+            // Unique across clips: a caption across a cut is in two of them.
+            let style = clip == 0 ? "ts\(index + 1)" : "ts\(clip + 1)-\(index + 1)"
             let text = cue.lines.map(escape).joined(separator: "&#10;")
             lines += [
                 #"                        <caption lane="\#(lane)" offset="\#(time(start))" name="\#(escape(cue.lines.joined(separator: " ")))" duration="\#(time(end - start))" role="\#(escape(role))">"#,
@@ -161,12 +181,14 @@ public enum FinalCutHandoff {
     ///     mixed into the screen's audio, so they can be adjusted or deleted.
     ///   - trim: The part to keep, in seconds. The files stay whole and the project
     ///     trims them, so the cut parts can be brought back in Final Cut.
+    ///   - cuts: Parts to leave out from inside the trim (retakes), in seconds; the project
+    ///     leaves them out the same way.
     ///   - captions: Added to the project as captions, not drawn into the screen.
     /// - Returns: The project file, to open in Final Cut.
     public static func prepare(
         name: String, screen: URL, camera: URL?, findings: [Finding], effects: [any FrameEffect],
         clicks: [PointerTrack.Click], clickSounds: [PointerTrack.Click] = [], in folder: URL,
-        trim: ClosedRange<Double>? = nil, captions: Captions? = nil,
+        trim: ClosedRange<Double>? = nil, cuts: [ClosedRange<Double>] = [], captions: Captions? = nil,
         progress: @escaping @Sendable (Double) -> Void = { _ in }
     ) async throws -> URL {
         let fileManager = FileManager.default
@@ -213,6 +235,9 @@ public enum FinalCutHandoff {
                 .map { Trim.frames($0, frameRate: frameRate, totalFrames: frames) },
             soundEffects: try FinalCutProject.SoundEffect.clicks(clickSounds, in: folder)
         )
+        project.cuts = cuts.map { cut in
+            Int((cut.lowerBound * Double(frameRate)).rounded())..<Int((cut.upperBound * Double(frameRate)).rounded())
+        }
         project.captions = captions
         let projectURL = folder.appendingPathComponent(name).appendingPathExtension("fcpxml")
         try project.xml.write(to: projectURL, atomically: true, encoding: .utf8)

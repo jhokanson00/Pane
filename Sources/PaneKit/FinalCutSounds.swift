@@ -57,13 +57,13 @@ extension FinalCutProject {
 
     /// One connected clip per moment, below the screen. Sounds that would overlap go on
     /// separate lanes, so none hides another.
-    var soundEffectClips: [String] {
+    func soundEffectClips(in kept: Range<Int>) -> [String] {
         let rate = Double(ClickSound.sampleRate)
-        // Placed on the screen file's own timeline, like the markers, so a trim only
-        // leaves out the sounds in the parts cut off.
+        // Placed on the screen file's own timeline, like the markers, so a trim or cut
+        // only leaves out the sounds in the parts left out.
         func sample(_ frame: Int) -> Int { Int((Double(frame) / Double(max(frameRate, 1)) * rate).rounded()) }
-        let start = sample(keptFrames.lowerBound)
-        let end = sample(keptFrames.upperBound)
+        let start = sample(kept.lowerBound)
+        let end = sample(kept.upperBound)
         let placed = soundEffects.enumerated().flatMap { index, sound in
             sound.times.map { (start: Int(($0 * rate).rounded()), index: index, sound: sound) }
         }
