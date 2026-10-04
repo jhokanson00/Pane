@@ -290,6 +290,9 @@ private final class PrompterPanel {
     private var panel: NSPanel?
     private var monitors: [Any] = []
     private var faded = false
+    /// Where the strip is, in screen coordinates: the hover test uses this, not the
+    /// window's frame.
+    private var area = NSRect.zero
 
     func show(on screen: NSScreen?, controller: PrompterController) {
         hide()
@@ -302,7 +305,11 @@ private final class PrompterPanel {
         panel.level = .statusBar
         panel.ignoresMouseEvents = true
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary]
-        panel.contentView = NSHostingView(rootView: PrompterStrip().environmentObject(controller))
+        let hosting = NSHostingView(rootView: PrompterStrip().environmentObject(controller))
+        // Otherwise SwiftUI sizes the window to the script's longest line, unwrapped: far
+        // wider than the strip, and the pointer seemed to be "over" it everywhere.
+        hosting.sizingOptions = []
+        panel.contentView = hosting
         self.panel = panel
         place(on: screen, size: controller.textSize)
         panel.orderFrontRegardless()
@@ -331,8 +338,8 @@ private final class PrompterPanel {
         let width = min(1000, screen.frame.width * 0.62)
         // Room for three lines, any of them wrapping once, plus the status row.
         let height = size.points * 1.3 * 4 + 44
-        panel?.setFrame(NSRect(x: visible.midX - width / 2, y: visible.maxY - height - 6,
-                               width: width, height: height), display: true)
+        area = NSRect(x: visible.midX - width / 2, y: visible.maxY - height - 6, width: width, height: height)
+        panel?.setFrame(area, display: true)
     }
 
     func hide() {
@@ -345,7 +352,7 @@ private final class PrompterPanel {
 
     private func updateFade() {
         guard let panel else { return }
-        let over = panel.frame.insetBy(dx: -12, dy: -12).contains(NSEvent.mouseLocation)
+        let over = area.insetBy(dx: -12, dy: -12).contains(NSEvent.mouseLocation)
         guard over != faded else { return }
         faded = over
         NSAnimationContext.runAnimationGroup { context in
