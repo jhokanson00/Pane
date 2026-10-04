@@ -15,8 +15,21 @@ enum RecorderError: LocalizedError {
         case .microphoneUnavailable:
             return "The microphone couldn't be opened. Pick a different one or turn the microphone off."
         case .writerFailed(let error):
-            return "Couldn't write the video file. \(error?.localizedDescription ?? "")"
+            return "Couldn't write the video file. \(error.map(Self.describe) ?? "")"
         }
+    }
+
+    /// The message plus every error code underneath it, e.g. "The operation could not be
+    /// completed (AVFoundationErrorDomain -11800; NSOSStatusErrorDomain -16341)", since
+    /// AVFoundation's own message rarely says what went wrong.
+    static func describe(_ error: Error) -> String {
+        var codes: [String] = []
+        var current: NSError? = error as NSError
+        while let nsError = current, codes.count < 4 {
+            codes.append("\(nsError.domain) \(nsError.code)")
+            current = nsError.userInfo[NSUnderlyingErrorKey] as? NSError
+        }
+        return "\(error.localizedDescription) (\(codes.joined(separator: "; ")))"
     }
 }
 
@@ -30,10 +43,11 @@ enum RecorderError: LocalizedError {
 /// Track layout: video, then microphone, then system audio. The mic comes first because
 /// most web players only play the first audio track.
 final class ScreenRecorder: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Sendable {
-    /// Files are written in self-contained pieces this long, so if Pane quits or the Mac
-    /// loses power mid-recording, everything but the last piece still plays. Without them
-    /// an MP4 can't be opened at all until it's finished.
-    static let fragmentInterval = CMTime(seconds: 2, preferredTimescale: 600)
+    /// Writing in self-contained pieces would keep a recording if Pane quit or the Mac lost
+    /// power mid-recording (an unfinished MP4 can't be opened). Off for now: with a real
+    /// microphone the writer failed at the first piece (2 s in), for a reason not yet found.
+    /// Set to e.g. 2 s to try it again.
+    static let fragmentInterval: CMTime? = nil
 
     struct Options {
         var captureMicrophone: Bool
@@ -130,7 +144,7 @@ final class ScreenRecorder: NSObject, SCStreamOutput, SCStreamDelegate, @uncheck
 
         try? FileManager.default.removeItem(at: outputURL)
         let writer = try AVAssetWriter(outputURL: outputURL, fileType: .mp4)
-        writer.movieFragmentInterval = Self.fragmentInterval
+        if let interval = Self.fragmentInterval { writer.movieFragmentInterval = interval }
 
         let bitRate = max(4_000_000, Int(Double(width * height * options.frameRate) * 0.05))
         let videoInput = AVAssetWriterInput(mediaType: .video, outputSettings: [
