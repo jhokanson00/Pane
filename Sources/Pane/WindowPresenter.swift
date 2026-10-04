@@ -6,6 +6,7 @@ enum WindowPresenter {
     private static var mainWindow: NSWindow?
     private static var hiddenAppsWindow: NSWindow?
     private static var helpWindow: NSWindow?
+    private static var prompterWindow: NSWindow?
 
     static func showMain() {
         let model = RecorderModel.shared
@@ -75,6 +76,24 @@ enum WindowPresenter {
         }
         NSApp.activate()
         helpWindow?.makeKeyAndOrderFront(nil)
+    }
+
+    /// The teleprompter's script window.
+    static func showPrompter() {
+        if prompterWindow == nil {
+            let window = NSWindow(contentViewController: NSHostingController(
+                rootView: PrompterView().environmentObject(RecorderModel.shared)
+            ))
+            window.title = "Teleprompter"
+            window.styleMask = [.titled, .closable, .miniaturizable, .resizable]
+            window.setContentSize(NSSize(width: 600, height: 560))
+            window.isReleasedWhenClosed = false
+            window.center()
+            window.setFrameAutosaveName("PanePrompter")
+            prompterWindow = window
+        }
+        NSApp.activate()
+        prompterWindow?.makeKeyAndOrderFront(nil)
     }
 
     static func showHiddenApps() {

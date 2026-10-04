@@ -465,6 +465,8 @@ private struct SettingsForm: View {
                 ShortcutSetting()
             }
 
+            PrompterSetting()
+
             Section("Privacy") {
                 HStack {
                     VStack(alignment: .leading) {
@@ -505,5 +507,36 @@ private struct SettingsForm: View {
         panel.allowsMultipleSelection = false
         guard panel.runModal() == .OK, let url = panel.url else { return }
         model.setBackgroundImage(from: url)
+    }
+}
+
+/// The teleprompter's switch in the main window, with the script a click away.
+private struct PrompterSetting: View {
+    @ObservedObject private var prompter = PrompterController.shared
+
+    var body: some View {
+        Section("Teleprompter") {
+            Toggle(isOn: $prompter.enabled) {
+                VStack(alignment: .leading) {
+                    Text("Show while recording")
+                    Text(caption)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .toggleStyle(.switch)
+            .disabled(!prompter.isAvailable)
+            HStack {
+                Text(prompter.hasScript ? "\(prompter.script.lines.filter { !$0.words.isEmpty }.count) lines ready" : "No script yet")
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Button(prompter.hasScript ? "Edit Script…" : "Write Script…") { WindowPresenter.showPrompter() }
+            }
+        }
+    }
+
+    private var caption: String {
+        guard prompter.isAvailable else { return "Needs macOS 26 or later." }
+        return "Your script at the top of the screen, following your voice as you speak. Never in the recording."
     }
 }

@@ -65,6 +65,7 @@ final class ShortcutRecorder {
             // Holding a key repeats it; only the first press counts.
             guard event.getIntegerValueField(.keyboardEventAutorepeat) == 0 else { return }
             let code = UInt16(truncatingIfNeeded: event.getIntegerValueField(.keyboardEventKeycode))
+            guard !PrompterHotKeys.matches(keyCode: code, flags: event.flags) else { return }
             let nsEvent = NSEvent(cgEvent: event)
             // The filter runs first; the characters are only read for a shortcut.
             guard let shortcut = KeyShortcut.logged(keyCode: code, modifiers: KeyModifiers(event.flags), characters: {

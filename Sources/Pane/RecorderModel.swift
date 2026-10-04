@@ -224,6 +224,13 @@ final class RecorderModel: ObservableObject {
         if cameraEnabled, cameraStyle.showBubbleWhileRecording {
             bubble.show(in: target.frame, style: cameraStyle)
         }
+        // Up during the countdown so the first line can be read, listening once recording.
+        let prompter = PrompterController.shared
+        let usesPrompter = prompter.showsWhileRecording
+        if usesPrompter {
+            prompter.begin(on: target.screen, listen: micEnabled, ownMicrophone: false, microphoneID: micID)
+            prompter.pause()
+        }
 
         let finished = await countdown.run(seconds: 3, on: target.screen) { [weak self] in
             self?.state != .countingDown
@@ -238,6 +245,9 @@ final class RecorderModel: ObservableObject {
             recorder.onUnexpectedStop = { [weak self] error in
                 Task { await self?.stopRecording(reason: error) }
             }
+            if usesPrompter, micEnabled {
+                recorder.microphoneTap = { [audio = prompter.audio] buffer in audio.append(buffer) }
+            }
             try await recorder.start(filter: filter, options: .init(
                 captureMicrophone: micEnabled,
                 microphoneID: micID,
@@ -249,11 +259,13 @@ final class RecorderModel: ObservableObject {
             target.distractions?.start(updating: recorder)
             distractionGuard = target.distractions
             let pointer = PointerRecorder(area: target.windowID.map { .window($0, target.frame) } ?? .display(target.frame))
+            pointer.onPress = { PrompterController.shared.clicked() }
             pointer.start()
             pointerRecorder = pointer
             startShortcuts()
             beginTimer()
             state = .recording
+            if usesPrompter { prompter.resume() }
         } catch {
             problem = .other("Couldn't start recording: \(error.localizedDescription)")
             resetAfterRecording()
@@ -271,6 +283,7 @@ final class RecorderModel: ObservableObject {
         recorder.pause()
         pointerRecorder?.pause()
         shortcutRecorder?.pause()
+        PrompterController.shared.pause()
         pauses.pause(at: CACurrentMediaTime())
         isPaused = true
         updateElapsed()
@@ -282,6 +295,7 @@ final class RecorderModel: ObservableObject {
         pointerRecorder?.resume()
         shortcutRecorder?.resume()
         recorder.resume()
+        PrompterController.shared.resume()
         pauses.resume(at: CACurrentMediaTime())
         isPaused = false
     }
@@ -299,6 +313,7 @@ final class RecorderModel: ObservableObject {
         pointerRecorder?.stop()
         distractionGuard?.stop()
         shortcutRecorder?.stop()
+        PrompterController.shared.end()
         do {
             let url = try await recorder.stop()
             savePointer(for: url)
@@ -475,6 +490,7 @@ final class RecorderModel: ObservableObject {
     }
 
     private func resetAfterRecording() {
+        if !PrompterController.shared.isRehearsing { PrompterController.shared.end() }
         timer?.invalidate()
         timer = nil
         recorder = nil

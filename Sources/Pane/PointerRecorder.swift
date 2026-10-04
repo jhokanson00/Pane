@@ -149,6 +149,9 @@ final class PointerRecorder {
         return abs(event.timestamp - now) < 1 ? event.timestamp : now
     }
 
+    /// Called on every press that's logged (the teleprompter ticks off its click cues).
+    var onPress: (() -> Void)?
+
     private func handle(_ event: NSEvent) {
         guard !isPaused else { return }
         let time = eventTime(event)
@@ -161,6 +164,7 @@ final class PointerRecorder {
         case .leftMouseDown, .rightMouseDown, .otherMouseDown:
             let point = event.window == nil ? event.locationInWindow : NSEvent.mouseLocation
             presses.append(Press(time: time, point: point, button: button, isHand: Self.pointerIsHand()))
+            onPress?()
         default:
             if let index = presses.lastIndex(where: { $0.button == button && $0.released == nil }) {
                 presses[index].released = time

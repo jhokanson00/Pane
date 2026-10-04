@@ -69,6 +69,8 @@ final class ScreenRecorder: NSObject, SCStreamOutput, SCStreamDelegate, @uncheck
     /// Called on the main queue if the system stops the stream (display unplugged,
     /// "Stop Sharing" clicked in the menu bar, etc.).
     var onUnexpectedStop: ((Error) -> Void)?
+    /// Every microphone buffer as it arrives, on the recorder's queue (for the teleprompter).
+    var microphoneTap: ((CMSampleBuffer) -> Void)?
 
     private let camera: CameraEngine?
     private let ciContext = CIContext(options: [.cacheIntermediates: false])
@@ -186,6 +188,7 @@ final class ScreenRecorder: NSObject, SCStreamOutput, SCStreamDelegate, @uncheck
         var microphone: MicrophoneCapture?
         if options.captureMicrophone {
             microphone = MicrophoneCapture(deviceID: options.microphoneID, queue: queue) { [weak self] sampleBuffer in
+                self?.microphoneTap?(sampleBuffer)
                 guard let self, !self.isStopping, self.sessionStarted else { return }
                 for piece in self.microphoneAudio.retime(sampleBuffer, pauses: self.pauses) {
                     self.appendAudio(piece, to: self.micInput)

@@ -81,6 +81,19 @@ public final class LiveTranscriber: @unchecked Sendable {
         input.yield(AnalyzerInput(buffer: converted))
     }
 
+    /// Feeds a captured audio buffer (PCM, as Pane's microphone capture delivers it).
+    public func append(_ sampleBuffer: CMSampleBuffer) {
+        let frames = AVAudioFrameCount(CMSampleBufferGetNumSamples(sampleBuffer))
+        guard frames > 0, let description = sampleBuffer.formatDescription else { return }
+        let sourceFormat = AVAudioFormat(cmAudioFormatDescription: description)
+        guard let buffer = AVAudioPCMBuffer(pcmFormat: sourceFormat, frameCapacity: frames) else { return }
+        buffer.frameLength = frames
+        let status = CMSampleBufferCopyPCMDataIntoAudioBufferList(
+            sampleBuffer, at: 0, frameCount: Int32(frames), into: buffer.mutableAudioBufferList)
+        guard status == noErr else { return }
+        append(buffer)
+    }
+
     /// Stops listening once the audio fed so far has been heard.
     public func finish() async {
         input.finish()
