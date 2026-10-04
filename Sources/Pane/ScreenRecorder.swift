@@ -30,6 +30,11 @@ enum RecorderError: LocalizedError {
 /// Track layout: video, then microphone, then system audio. The mic comes first because
 /// most web players only play the first audio track.
 final class ScreenRecorder: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Sendable {
+    /// Files are written in self-contained pieces this long, so if Pane quits or the Mac
+    /// loses power mid-recording, everything but the last piece still plays. Without them
+    /// an MP4 can't be opened at all until it's finished.
+    static let fragmentInterval = CMTime(seconds: 2, preferredTimescale: 600)
+
     struct Options {
         var captureMicrophone: Bool
         var microphoneID: String?
@@ -121,6 +126,7 @@ final class ScreenRecorder: NSObject, SCStreamOutput, SCStreamDelegate, @uncheck
 
         try? FileManager.default.removeItem(at: outputURL)
         let writer = try AVAssetWriter(outputURL: outputURL, fileType: .mp4)
+        writer.movieFragmentInterval = Self.fragmentInterval
 
         let bitRate = max(4_000_000, Int(Double(width * height * options.frameRate) * 0.05))
         let videoInput = AVAssetWriterInput(mediaType: .video, outputSettings: [

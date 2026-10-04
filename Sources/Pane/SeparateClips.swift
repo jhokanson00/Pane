@@ -35,6 +35,7 @@ final class SeparateClips {
 
         // The screen, as the recording itself is written, with the same audio.
         screenWriter = try AVAssetWriter(outputURL: files.screen, fileType: .mp4)
+        screenWriter.movieFragmentInterval = ScreenRecorder.fragmentInterval
         let screenInput = AVAssetWriterInput(mediaType: .video, outputSettings: [
             AVVideoCodecKey: AVVideoCodecType.h264,
             AVVideoWidthKey: width,
@@ -62,6 +63,7 @@ final class SeparateClips {
         // The camera: HEVC with an alpha channel, which Final Cut shows as transparent.
         // Mostly empty, so it stays small.
         cameraWriter = try AVAssetWriter(outputURL: files.camera, fileType: .mov)
+        cameraWriter.movieFragmentInterval = ScreenRecorder.fragmentInterval
         let cameraInput = AVAssetWriterInput(mediaType: .video, outputSettings: [
             AVVideoCodecKey: AVVideoCodecType.hevcWithAlpha,
             AVVideoWidthKey: width,
