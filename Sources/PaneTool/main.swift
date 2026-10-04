@@ -16,6 +16,7 @@
 //   swift run pane-tool trim video.mp4 out.mp4 from to  export only from..to, with pointer effects
 //   swift run pane-tool zoom-export video.mp4 out.mp4 [subtle|strong]  pointer effects plus zoom toward clicks
 //   swift run pane-tool captions video.mp4 [out.mp4]  captions from the narration as SRT; optionally burned into a copy
+//   swift run pane-tool follow audio.wav script.txt  how closely the teleprompter follows the narration, live
 import AppKit
 import AVFoundation
 import PaneKit
@@ -282,6 +283,9 @@ case "finalcut":
 
 case "zoom-export":
     try await ZoomTool.run(args)
+
+case "follow":
+    try await FollowTool.run(args)
 
 case "captions":
     // Captions from the narration, on device. The SRT goes to standard output; timing

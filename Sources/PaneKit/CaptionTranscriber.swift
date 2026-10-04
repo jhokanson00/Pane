@@ -102,7 +102,7 @@ public enum CaptionTranscriber {
 
     /// Downloads the speech model for the language if this Mac doesn't have it yet. macOS
     /// keeps it for every app, so this happens once.
-    private static func installModel(for transcriber: SpeechTranscriber,
+    static func installModel(for transcriber: SpeechTranscriber,
                                      progress: @escaping @Sendable (Stage) -> Void) async throws {
         guard let request = try await AssetInventory.assetInstallationRequest(supporting: [transcriber]) else { return }
         progress(.downloading(0))
