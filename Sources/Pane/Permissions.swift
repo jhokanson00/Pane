@@ -64,6 +64,10 @@ enum Permissions {
     }
 
     static func openSettings(_ pane: Pane) {
+        // macOS lists an app under Input Monitoring only once it has asked, which Pane
+        // otherwise does only when the shortcut setting is switched on (it may have been
+        // on since before access was reset).
+        if pane == .inputMonitoring, !inputMonitoringAllowed { requestInputMonitoring() }
         let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?\(pane.rawValue)")!
         NSWorkspace.shared.open(url)
     }

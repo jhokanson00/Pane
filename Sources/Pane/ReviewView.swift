@@ -662,6 +662,15 @@ private struct ExportPanel: View {
                     Button("Export Again") { session.export() }
                 }
                 .controlSize(.small)
+                if ReviewSession.finalCut != nil {
+                    Button {
+                        session.sendToFinalCut()
+                    } label: {
+                        Label("Send to Final Cut", systemImage: "film.stack")
+                            .frame(maxWidth: .infinity)
+                    }
+                    .controlSize(.large)
+                }
             }
         }
         .padding(14)

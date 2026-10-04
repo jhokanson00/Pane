@@ -113,6 +113,7 @@ extension RecorderModel {
         if recorder.start() {
             shortcutRecorder = recorder
         } else {
+            Permissions.requestInputMonitoring()
             problem = .permission(.inputMonitoring, "Keyboard shortcuts aren't being recorded. Pane needs Input "
                                   + "Monitoring access: turn it on in System Settings, then quit and reopen Pane.")
         }
