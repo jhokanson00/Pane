@@ -345,7 +345,8 @@ private final class PrompterPanel {
 
     private func place(on screen: NSScreen, size: PrompterController.TextSize) {
         let visible = screen.visibleFrame
-        let width = min(1000, screen.frame.width * 0.62)
+        // Narrow, so the eyes barely move from side to side while reading.
+        let width = min(500, screen.frame.width * 0.31)
         // Three rows, padding and the status row.
         let height = PrompterLayout.pitch(size.points) * CGFloat(PrompterLayout.visibleRows) + 52
         area = NSRect(x: visible.midX - width / 2, y: visible.maxY - height - 6, width: width, height: height)
@@ -526,7 +527,8 @@ private struct PrompterStrip: View {
             Circle().fill(dotColor).frame(width: 7, height: 7)
             Text(statusText)
             Spacer()
-            Text("⌃⌥← →  line back / forward")
+            Text("⌃⌥← →")
+                .help("Control-Option-Left and Right move a line back or forward.")
         }
         .font(.system(size: 11, weight: .medium))
         .foregroundStyle(.white.opacity(0.55))
