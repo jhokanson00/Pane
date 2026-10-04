@@ -44,6 +44,9 @@ public struct ScriptFollower: Sendable {
     public var tuning: Tuning
     /// The index of the next word to be said; `script.words.count` once it's all been said.
     public private(set) var position = 0
+    /// Words heard before the last manual jump, which no longer count.
+    private var heardBeforeJump = 0
+    private var lastHeardCount = 0
 
     public init(script: PrompterScript, tuning: Tuning = Tuning()) {
         self.script = script
@@ -62,16 +65,33 @@ public struct ScriptFollower: Sendable {
         script.cues.prefix { $0.beforeWord <= position }.count
     }
 
-    /// Moves the place by hand, for a "next line" or "back" key.
+    /// Moves the place by hand, for the back and forward keys. What was heard before no
+    /// longer counts, or the words just said would pull the place straight back.
     public mutating func jump(to word: Int) {
         position = min(max(0, word), script.words.count)
+        heardBeforeJump = lastHeardCount
+    }
+
+    /// Back to the start of the sentence being read, or to the sentence before when
+    /// already at its start.
+    public mutating func sentenceBack() {
+        let starts = script.sentenceStarts
+        guard let current = starts.lastIndex(where: { $0 < position }) else { return jump(to: 0) }
+        jump(to: starts[current])
+    }
+
+    /// On to the start of the next sentence.
+    public mutating func sentenceForward() {
+        jump(to: script.sentenceStarts.first { $0 > position } ?? script.words.count)
     }
 
     /// Updates the place from everything heard so far, finished words and the recognizer's
     /// current guess together. Returns whether it moved.
     @discardableResult
     public mutating func hear(_ heard: [String]) -> Bool {
-        let tail = heard.lazy.map(PrompterScript.key).filter { !$0.isEmpty }.suffix(tuning.heardWords)
+        lastHeardCount = heard.count
+        let fresh = heard.dropFirst(min(heardBeforeJump, heard.count))
+        let tail = fresh.lazy.map(PrompterScript.key).filter { !$0.isEmpty }.suffix(tuning.heardWords)
         guard let moved = bestPosition(for: Array(tail)), moved != position else { return false }
         position = moved
         return true

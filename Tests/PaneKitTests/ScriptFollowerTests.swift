@@ -88,4 +88,42 @@ final class ScriptFollowerTests: XCTestCase {
             .split(separator: " ").map(String.init))
         XCTAssertEqual(follower.script.words[follower.position].key, "card")
     }
+
+    func testSentenceStarts() {
+        let script = PrompterScript(text)
+        let starts = script.sentenceStarts.map { script.words[$0].text }
+        XCTAssertEqual(starts, ["This", "Everything", "Card", "Keyboard"])
+        XCTAssertEqual(PrompterScript("One. Two! Three? \"Four.\" Five").sentenceStarts, [0, 1, 2, 3, 4])
+    }
+
+    func testSentenceBackAndForward() {
+        let script = PrompterScript(text)
+        var follower = ScriptFollower(script: script)
+        let everything = script.sentenceStarts[1]
+        follower.jump(to: everything + 4)
+        follower.sentenceBack()
+        XCTAssertEqual(follower.position, everything, "mid-sentence: back to its start")
+        follower.sentenceBack()
+        XCTAssertEqual(follower.position, 0, "at a start: to the sentence before")
+        follower.sentenceForward()
+        XCTAssertEqual(follower.position, everything)
+    }
+
+    /// After going back by hand, the words just said mustn't pull the place forward again.
+    func testJumpBackIsNotUndoneByWhatWasJustHeard() {
+        let script = PrompterScript(text)
+        var follower = ScriptFollower(script: script)
+        var heard = "this is pane a free screen recorder for mac everything here is private".split(separator: " ").map(String.init)
+        follower.hear(heard)
+        XCTAssertEqual(script.words[follower.position].key, "names")
+        follower.sentenceBack()
+        XCTAssertEqual(script.words[follower.position].key, "everything")
+        // The recognizer reports a bit more of the flubbed attempt, then the retake begins.
+        heard.append("um")
+        follower.hear(heard)
+        XCTAssertEqual(script.words[follower.position].key, "everything")
+        heard += ["everything", "here"]
+        follower.hear(heard)
+        XCTAssertEqual(script.words[follower.position].key, "is")
+    }
 }

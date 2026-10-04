@@ -10,7 +10,8 @@ import SwiftUI
 /// While recording it listens to the microphone audio Pane is already recording; when
 /// rehearsing it opens the microphone itself. It's one of Pane's windows, so it's never in
 /// a recording. Clicks pass through it, and it fades while the pointer is over it, so the
-/// app underneath stays usable. ⌃⌥→ and ⌃⌥← move it a line forward or back.
+/// app underneath stays usable. ⌃⌥↑ goes back to the start of the sentence (to start it
+/// over), ⌃⌥↓ on to the next one.
 @MainActor
 final class PrompterController: ObservableObject {
     static let shared = PrompterController()
@@ -129,7 +130,7 @@ final class PrompterController: ObservableObject {
         hotKeys = PrompterHotKeys { [weak self] step in self?.nudge(lines: step) }
 
         guard listen else {
-            status = .problem("The microphone is off: use ⌃⌥→ to move on.")
+            status = .problem("The microphone is off: use ⌃⌥↓ to move on.")
             return
         }
         guard #available(macOS 26, *) else {
@@ -239,20 +240,10 @@ final class PrompterController: ObservableObject {
         return max(0, script.lines.count - 1)
     }
 
-    /// Moves to the start of the next spoken line, or back to the start of this one (or
-    /// the one before, if already there).
+    /// Back to the start of the sentence (or the one before, if already there), or on to
+    /// the next sentence.
     func nudge(lines step: Int) {
-        let spoken = script.lines.filter { !$0.words.isEmpty }.map(\.words.lowerBound)
-        guard !spoken.isEmpty else { return }
-        let target: Int
-        if step > 0 {
-            target = spoken.first { $0 > position } ?? script.words.count
-        } else {
-            let earlier = spoken.filter { $0 < position }
-            target = earlier.count >= 2 && position == (spoken.last { $0 <= position } ?? 0)
-                ? earlier[earlier.count - 2] : (earlier.last ?? 0)
-        }
-        follower.jump(to: target)
+        if step > 0 { follower.sentenceForward() } else { follower.sentenceBack() }
         position = follower.position
         doneCues = doneCues.filter { script.cues[$0].beforeWord < position }
     }
@@ -527,8 +518,8 @@ private struct PrompterStrip: View {
             Circle().fill(dotColor).frame(width: 7, height: 7)
             Text(statusText)
             Spacer()
-            Text("⌃⌥← →")
-                .help("Control-Option-Left and Right move a line back or forward.")
+            Text("⌃⌥↑ again  ⌃⌥↓ skip")
+                .help("Control-Option-Up starts the sentence over; Control-Option-Down skips to the next one.")
         }
         .font(.system(size: 11, weight: .medium))
         .foregroundStyle(.white.opacity(0.55))
@@ -557,15 +548,16 @@ private struct PrompterStrip: View {
 
 // MARK: - Keys
 
-/// ⌃⌥→ and ⌃⌥← for the teleprompter, as system hot keys: they work in any app and need no
-/// permission. Registered only while the strip is showing.
+/// ⌃⌥↑ and ⌃⌥↓ for the teleprompter, as system hot keys: they work in any app and need no
+/// permission, and plain arrow keys stay with the app being recorded. Registered only
+/// while the strip is showing.
 final class PrompterHotKeys {
     private var refs: [EventHotKeyRef?] = []
     private var handlerRef: EventHandlerRef?
     fileprivate let action: (Int) -> Void
 
     private static let signature = OSType(0x5041_4E45)  // "PANE"
-    private static let keys: [(code: Int, step: Int)] = [(kVK_RightArrow, 1), (kVK_LeftArrow, -1)]
+    private static let keys: [(code: Int, step: Int)] = [(kVK_DownArrow, 1), (kVK_UpArrow, -1)]
 
     /// Whether a key press is one of these, so it's never shown as a shortcut badge.
     static func matches(keyCode: UInt16, flags: CGEventFlags) -> Bool {

@@ -62,6 +62,21 @@ public struct PrompterScript: Sendable, Equatable {
         }
     }
 
+    /// Where each sentence starts, as word indices: after a word ending in . ! or ?, and at
+    /// the start of every line.
+    public var sentenceStarts: [Int] {
+        var starts: [Int] = []
+        var previousLine = -1
+        var endedSentence = true
+        for (index, word) in words.enumerated() {
+            if endedSentence || word.line != previousLine { starts.append(index) }
+            previousLine = word.line
+            let bare = word.text.trimmingCharacters(in: CharacterSet(charactersIn: "\"'”’)]"))
+            endedSentence = bare.hasSuffix(".") || bare.hasSuffix("!") || bare.hasSuffix("?")
+        }
+        return starts
+    }
+
     /// The spoken words, for the recognizer's list of words to expect.
     public var vocabulary: [String] {
         var seen = Set<String>()
