@@ -36,8 +36,11 @@ echo "==> Pane $VERSION (build $BUILD)"
 PANE_UNIVERSAL=1 ./scripts/build-app.sh release
 APP=build/Pane.app
 
+# Read the signature once: grep -q or awk's exit would cut codesign off mid-output,
+# which pipefail counts as a failure.
+SIGNED_BY="$(codesign -dv --verbose=2 "$APP" 2>&1 | sed -n 's/^Authority=\(Developer ID Application.*\)/\1/p')"
 NOTARIZE=0
-if codesign -dv --verbose=2 "$APP" 2>&1 | grep -q "Authority=Developer ID Application"; then
+if [ -n "$SIGNED_BY" ]; then
   NOTARIZE=1
 elif [ "$PUBLISH" = 1 ]; then
   echo "No Developer ID Application certificate in the keychain; only notarized builds are published." >&2
@@ -71,8 +74,7 @@ ln -s /Applications "$STAGE/Applications"
 hdiutil create -quiet -volname "Pane $VERSION" -srcfolder "$STAGE" -fs HFS+ -format UDZO -ov "$DMG"
 
 if [ "$NOTARIZE" = 1 ]; then
-  IDENTITY="$(codesign -dv --verbose=2 "$APP" 2>&1 | awk -F= '/^Authority=Developer ID Application/ { print $2; exit }')"
-  codesign --force --timestamp --sign "$IDENTITY" "$DMG"
+  codesign --force --timestamp --sign "$SIGNED_BY" "$DMG"
   notarize "$DMG"
   xcrun stapler staple "$DMG"
   spctl --assess --type open --context context:primary-signature -v "$DMG"

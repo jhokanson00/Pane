@@ -1,0 +1,271 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Brightline CRM</title>
+<!--
+  A made-up app to record Pane's demo video on. Every name, email, phone number, card
+  and key here is fake. Open this file in a browser; it needs no network.
+  Keys are built when the page loads so the repo holds no key-shaped text.
+-->
+<style>
+  :root {
+    --bg: #f6f7f9; --panel: #fff; --ink: #1d2330; --muted: #6b7385; --line: #e4e7ec;
+    --accent: #3b5bdb; --accent-soft: #edf1ff; --green: #2f9e44; --amber: #e8590c; --side: #151a26;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body { font: 15px/1.45 -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif; color: var(--ink); background: var(--bg); display: flex; }
+  a { color: inherit; text-decoration: none; }
+  button { font: inherit; cursor: pointer; }
+
+  /* Sidebar */
+  nav { width: 232px; flex: none; background: var(--side); color: #c9cfdc; padding: 20px 14px; display: flex; flex-direction: column; gap: 4px; }
+  .brand { display: flex; align-items: center; gap: 10px; color: #fff; font-weight: 700; font-size: 17px; padding: 4px 10px 18px; }
+  .brand i { width: 26px; height: 26px; border-radius: 7px; background: linear-gradient(135deg, #5c7cfa, #22b8cf); display: inline-block; }
+  nav a { padding: 9px 12px; border-radius: 8px; display: flex; justify-content: space-between; }
+  nav a:hover { background: #222a3b; color: #fff; }
+  nav a.on { background: #2a3350; color: #fff; }
+  nav .count { font-size: 12px; background: #2f3850; border-radius: 10px; padding: 1px 8px; }
+  nav .section { font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: #6f7890; margin: 18px 12px 6px; }
+  nav .me { margin-top: auto; display: flex; gap: 10px; align-items: center; padding: 10px; border-top: 1px solid #262e40; }
+  .avatar { width: 32px; height: 32px; border-radius: 50%; display: grid; place-items: center; font-weight: 600; font-size: 13px; color: #fff; flex: none; }
+
+  /* Main */
+  main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+  header { display: flex; align-items: center; gap: 12px; padding: 16px 28px; background: var(--panel); border-bottom: 1px solid var(--line); }
+  header h1 { font-size: 20px; margin: 0; flex: 1; }
+  .search { display: flex; align-items: center; gap: 8px; border: 1px solid var(--line); border-radius: 8px; padding: 7px 12px; width: 300px; color: var(--muted); background: var(--bg); }
+  .search input { border: 0; outline: 0; background: none; font: inherit; flex: 1; color: var(--ink); }
+  kbd { font: 12px -apple-system, sans-serif; border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 5px; padding: 0 5px; color: var(--muted); background: #fff; }
+  .btn { border: 1px solid var(--line); background: #fff; border-radius: 8px; padding: 7px 14px; }
+  .btn:hover { border-color: #c8ced9; }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .btn.primary:hover { background: #3049b8; }
+  .content { flex: 1; overflow: auto; padding: 24px 28px 60px; }
+  .page { display: none; } .page.on { display: block; }
+
+  .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 22px; }
+  .stat { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 16px 18px; }
+  .stat b { display: block; font-size: 24px; margin-top: 4px; }
+  .stat span { color: var(--muted); font-size: 13px; }
+  .stat em { font-style: normal; font-size: 12px; color: var(--green); }
+
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+  .card h2 { font-size: 15px; margin: 0; padding: 14px 18px; border-bottom: 1px solid var(--line); display: flex; justify-content: space-between; align-items: center; }
+  table { width: 100%; border-collapse: collapse; }
+  th { text-align: left; font-size: 12px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); font-weight: 600; padding: 10px 18px; background: #fafbfc; border-bottom: 1px solid var(--line); }
+  td { padding: 11px 18px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+  tbody tr { cursor: pointer; } tbody tr:hover { background: var(--accent-soft); }
+  .who { display: flex; align-items: center; gap: 10px; font-weight: 600; }
+  .tag { font-size: 12px; border-radius: 20px; padding: 2px 10px; font-weight: 600; }
+  .tag.active { background: #ebfbee; color: var(--green); } .tag.trial { background: #fff4e6; color: var(--amber); } .tag.lead { background: var(--accent-soft); color: var(--accent); }
+
+  /* Customer drawer */
+  .drawer { position: fixed; top: 0; right: 0; bottom: 0; width: 420px; background: var(--panel); border-left: 1px solid var(--line); box-shadow: -12px 0 40px rgba(20,25,40,.12); transform: translateX(100%); transition: transform .25s ease; display: flex; flex-direction: column; }
+  .drawer.on { transform: none; }
+  .drawer .top { padding: 22px 24px; border-bottom: 1px solid var(--line); display: flex; gap: 14px; align-items: center; }
+  .drawer .top .avatar { width: 48px; height: 48px; font-size: 17px; }
+  .drawer h3 { margin: 0; font-size: 18px; } .drawer .co { color: var(--muted); }
+  .drawer .close { margin-left: auto; border: 0; background: none; font-size: 22px; color: var(--muted); }
+  .drawer dl { margin: 0; padding: 18px 24px; display: grid; grid-template-columns: 120px 1fr; gap: 12px 10px; }
+  .drawer dt { color: var(--muted); } .drawer dd { margin: 0; font-weight: 500; }
+  .drawer .notes { margin: 0 24px; padding: 14px; background: var(--bg); border-radius: 10px; color: #3a4252; }
+  .drawer .actions { margin-top: auto; padding: 18px 24px; border-top: 1px solid var(--line); display: flex; gap: 10px; }
+
+  /* Settings */
+  .settings { display: grid; gap: 18px; max-width: 860px; }
+  .row { display: flex; align-items: center; gap: 14px; padding: 14px 18px; border-bottom: 1px solid var(--line); }
+  .row:last-child { border-bottom: 0; }
+  .row .label { width: 170px; color: var(--muted); flex: none; }
+  .row code { font: 14px ui-monospace, "SF Mono", Menlo, monospace; background: var(--bg); padding: 4px 8px; border-radius: 6px; }
+  .row .btn { margin-left: auto; }
+
+  /* Command palette */
+  .veil { position: fixed; inset: 0; background: rgba(15,20,35,.35); display: none; align-items: flex-start; justify-content: center; padding-top: 14vh; }
+  .veil.on { display: flex; }
+  .palette { width: 560px; background: #fff; border-radius: 14px; box-shadow: 0 24px 60px rgba(0,0,0,.25); overflow: hidden; }
+  .palette input { width: 100%; border: 0; border-bottom: 1px solid var(--line); padding: 16px 18px; font: inherit; font-size: 17px; outline: 0; }
+  .palette div { padding: 10px 18px; display: flex; justify-content: space-between; color: #3a4252; }
+  .palette div.sel { background: var(--accent-soft); color: var(--accent); }
+
+  .toast { position: fixed; bottom: 26px; left: 50%; transform: translate(-50%, 30px); opacity: 0; background: var(--side); color: #fff; padding: 10px 18px; border-radius: 10px; transition: .25s; }
+  .toast.on { opacity: 1; transform: translate(-50%, 0); }
+</style>
+</head>
+<body>
+<nav>
+  <div class="brand"><i></i>Brightline</div>
+  <a href="#" data-page="customers" class="on">Customers <span class="count" id="count">0</span></a>
+  <a href="#" data-page="deals">Deals <span class="count">12</span></a>
+  <a href="#" data-page="customers">Inbox <span class="count">3</span></a>
+  <a href="#" data-page="deals">Reports</a>
+  <div class="section">Workspace</div>
+  <a href="#" data-page="settings">Settings</a>
+  <a href="#" data-page="settings">Developers</a>
+  <div class="me"><span class="avatar" style="background:#7048e8">MR</span><div>Morgan Reyes<br><small style="color:#6f7890">morgan.reyes@brightline.example</small></div></div>
+</nav>
+
+<main>
+  <header>
+    <h1 id="title">Customers</h1>
+    <label class="search">⌕ <input id="search" placeholder="Search customers"> <kbd>⌘K</kbd></label>
+    <button class="btn" data-toast="Exported 32 customers">Export</button>
+    <button class="btn primary" data-toast="New customer created">New customer</button>
+  </header>
+
+  <div class="content">
+    <section class="page on" id="customers">
+      <div class="stats">
+        <div class="stat"><span>Active customers</span><b>1,284</b><em>▲ 8.2% this month</em></div>
+        <div class="stat"><span>Monthly revenue</span><b>$86,410</b><em>▲ 4.1%</em></div>
+        <div class="stat"><span>Open deals</span><b>47</b><em>▲ 3 this week</em></div>
+        <div class="stat"><span>Avg. response</span><b>2h 14m</b><em>▼ 12 min</em></div>
+      </div>
+      <div class="card">
+        <h2>All customers <button class="btn" data-toast="Filters saved">Filter</button></h2>
+        <table>
+          <thead><tr><th>Name</th><th>Company</th><th>Email</th><th>Phone</th><th>Plan</th><th>Status</th></tr></thead>
+          <tbody id="rows"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="page" id="deals">
+      <div class="card"><h2>Deals in progress</h2>
+        <table><thead><tr><th>Deal</th><th>Contact</th><th>Value</th><th>Stage</th></tr></thead><tbody id="deals-rows"></tbody></table>
+      </div>
+    </section>
+
+    <section class="page" id="settings">
+      <div class="settings">
+        <div class="card"><h2>Account</h2>
+          <div class="row"><span class="label">Workspace</span>Brightline Demo Co.</div>
+          <div class="row"><span class="label">Billing email</span>billing@brightline.example</div>
+          <div class="row"><span class="label">Card on file</span>Visa 4242 4242 4242 4242<button class="btn" data-toast="Card updated">Update</button></div>
+          <div class="row"><span class="label">Support line</span>+1 (800) 555-0147</div>
+        </div>
+        <div class="card"><h2>API keys</h2>
+          <div class="row"><span class="label">Live secret key</span><code id="key-live"></code><button class="btn" data-toast="Copied to clipboard">Copy</button></div>
+          <div class="row"><span class="label">Test secret key</span><code id="key-test"></code><button class="btn" data-toast="Copied to clipboard">Copy</button></div>
+          <div class="row"><span class="label">Webhook signing</span><code id="key-hook"></code><button class="btn" data-toast="Key rolled">Roll key</button></div>
+          <div class="row"><span class="label">Config</span><code id="key-config"></code></div>
+        </div>
+      </div>
+    </section>
+  </div>
+</main>
+
+<aside class="drawer" id="drawer">
+  <div class="top"><span class="avatar" id="d-avatar"></span><div><h3 id="d-name"></h3><div class="co" id="d-co"></div></div><button class="close" id="d-close">×</button></div>
+  <dl>
+    <dt>Email</dt><dd id="d-email"></dd>
+    <dt>Phone</dt><dd id="d-phone"></dd>
+    <dt>Plan</dt><dd id="d-plan"></dd>
+    <dt>Card</dt><dd id="d-card"></dd>
+    <dt>Tax ID</dt><dd id="d-ssn"></dd>
+    <dt>Customer since</dt><dd id="d-since"></dd>
+  </dl>
+  <p class="notes" id="d-notes"></p>
+  <div class="actions"><button class="btn primary" data-toast="Email drafted">Send email</button><button class="btn" data-toast="Call logged">Log call</button></div>
+</aside>
+
+<div class="veil" id="veil"><div class="palette">
+  <input id="palette-input" placeholder="Type a command or search…">
+  <div class="sel">Go to Customers <kbd>G C</kbd></div><div>Go to Deals <kbd>G D</kbd></div>
+  <div>Open Settings <kbd>⌘,</kbd></div><div>New customer <kbd>⌘N</kbd></div>
+</div></div>
+<div class="toast" id="toast"></div>
+
+<script>
+const first = ["Avery","Jordan","Priya","Mateo","Hana","Liam","Sofia","Noah","Amara","Ethan","Mei","Lucas","Zara","Owen","Isla","Ravi","Chloe","Diego","Nora","Felix","Leah","Kenji","Maya","Theo","Ines","Omar","Ruby","Elias","Tara","Hugo","Aisha","Ben"];
+const last = ["Collins","Patel","Nakamura","Rossi","Okafor","Bennett","Lindqvist","Moreau","Haddad","Kowalski","Fischer","Alvarez","Sato","Brennan","Duarte","Nguyen","Whitaker","Romero","Ivanova","Mensah","Park","Gallagher","Costa","Dubois","Reid","Larsen","Mehta","Quinn","Varga","Santos","Lund","Hart"];
+const companies = ["Juniper Labs","Northpeak Analytics","Coral & Finch","Tidewater Studio","Ember Logistics","Halcyon Health","Quarry Point","Bluefern Media","Ironleaf Capital","Lumen Robotics","Saltmarsh Foods","Kestrel Air"];
+const plans = ["Starter","Growth","Scale","Enterprise"];
+const statuses = ["active","active","trial","lead","active"];
+const colors = ["#e64980","#7048e8","#1c7ed6","#0ca678","#f08c00","#d6336c","#4263eb","#2b8a3e"];
+const domain = c => c.toLowerCase().replace(/[^a-z]+/g, "") + ".example";
+// Fake but valid-looking: payment test card numbers and fictional 555-01xx phones.
+const cards = ["4242 4242 4242 4242","4000 0566 5566 5556","5555 5555 5555 4444","3782 822463 10005"];
+
+const people = first.map((f, i) => {
+  const l = last[(i * 7) % last.length], co = companies[i % companies.length];
+  return {
+    name: `${f} ${l}`, initials: f[0] + l[0], company: co,
+    email: `${f}.${l}`.toLowerCase() + "@" + domain(co),
+    phone: `(${["415","212","312","617","206","303","512","646"][i % 8]}) 555-01${String(10 + i * 3 % 90).padStart(2, "0")}`,
+    plan: plans[i % 4], status: statuses[i % 5], color: colors[i % colors.length],
+    card: cards[i % cards.length], ssn: `9${String(10 + i).slice(-2)}-7${i % 10}-${String(4100 + i * 31).slice(-4)}`,
+    since: ["Mar 2023","Jul 2024","Jan 2025","Nov 2022","Aug 2025"][i % 5],
+  };
+});
+
+const rows = document.getElementById("rows");
+function render(filter = "") {
+  const list = people.filter(p => (p.name + p.company + p.email).toLowerCase().includes(filter.toLowerCase()));
+  rows.innerHTML = list.map(p => `<tr data-i="${people.indexOf(p)}">
+    <td><span class="who"><span class="avatar" style="background:${p.color}">${p.initials}</span>${p.name}</span></td>
+    <td>${p.company}</td><td>${p.email}</td><td>${p.phone}</td><td>${p.plan}</td>
+    <td><span class="tag ${p.status}">${p.status[0].toUpperCase() + p.status.slice(1)}</span></td></tr>`).join("");
+  document.getElementById("count").textContent = list.length;
+}
+render();
+
+document.getElementById("deals-rows").innerHTML = people.slice(0, 12).map((p, i) =>
+  `<tr><td>${p.company}: ${["Annual renewal","Seat expansion","Pilot","Onboarding"][i % 4]}</td><td>${p.name} · ${p.email}</td>
+   <td>$${(4200 + i * 1375).toLocaleString()}</td><td>${["Qualified","Proposal","Negotiation","Closed won"][i % 4]}</td></tr>`).join("");
+
+// Random keys, made on load.
+const pick = (n, set = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789") =>
+  Array.from({ length: n }, () => set[Math.floor(Math.random() * set.length)]).join("");
+document.getElementById("key-live").textContent = ["sk", "live", pick(28)].join("_");
+document.getElementById("key-test").textContent = ["sk", "test", pick(28)].join("_");
+document.getElementById("key-hook").textContent = "whsec_" + pick(32);
+document.getElementById("key-config").textContent = "api_key = " + pick(24);
+
+// Drawer
+const drawer = document.getElementById("drawer");
+rows.addEventListener("click", e => {
+  const tr = e.target.closest("tr"); if (!tr) return;
+  const p = people[tr.dataset.i];
+  const set = (id, v) => document.getElementById(id).textContent = v;
+  const av = document.getElementById("d-avatar"); av.textContent = p.initials; av.style.background = p.color;
+  set("d-name", p.name); set("d-co", p.company); set("d-email", p.email); set("d-phone", p.phone);
+  set("d-plan", p.plan); set("d-card", p.card); set("d-ssn", p.ssn); set("d-since", p.since);
+  set("d-notes", `Spoke with ${p.name.split(" ")[0]} about the ${p.plan} plan. Follow up at ${p.email} or ${p.phone} next week.`);
+  drawer.classList.add("on");
+});
+document.getElementById("d-close").onclick = () => drawer.classList.remove("on");
+
+// Navigation
+document.querySelectorAll("nav a").forEach(a => a.addEventListener("click", e => {
+  e.preventDefault();
+  document.querySelectorAll("nav a").forEach(x => x.classList.toggle("on", x === a));
+  document.querySelectorAll(".page").forEach(s => s.classList.toggle("on", s.id === a.dataset.page));
+  document.getElementById("title").textContent = a.firstChild.textContent.trim();
+  drawer.classList.remove("on");
+  document.querySelector(".content").scrollTop = 0;
+}));
+
+// Toasts
+const toast = document.getElementById("toast"); let toastTimer;
+document.addEventListener("click", e => {
+  const b = e.target.closest("[data-toast]"); if (!b) return;
+  toast.textContent = b.dataset.toast; toast.classList.add("on");
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => toast.classList.remove("on"), 1600);
+});
+
+// Keyboard: ⌘K palette, ⌘F search, Esc closes.
+const veil = document.getElementById("veil"), search = document.getElementById("search");
+document.addEventListener("keydown", e => {
+  if (e.metaKey && e.key.toLowerCase() === "k") { e.preventDefault(); veil.classList.add("on"); document.getElementById("palette-input").focus(); }
+  else if (e.metaKey && e.key.toLowerCase() === "f") { e.preventDefault(); search.focus(); search.select(); }
+  else if (e.key === "Escape") { veil.classList.remove("on"); drawer.classList.remove("on"); document.activeElement.blur(); }
+  else if (e.key === "Enter" && veil.classList.contains("on")) { veil.classList.remove("on"); document.querySelector('nav a[data-page="customers"]').click(); }
+});
+veil.addEventListener("click", e => { if (e.target === veil) veil.classList.remove("on"); });
+search.addEventListener("input", () => render(search.value));
+</script>
+</body>
+</html>
