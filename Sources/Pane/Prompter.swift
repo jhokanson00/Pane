@@ -73,6 +73,16 @@ final class PrompterController: ObservableObject {
     private let panel = PrompterPanel()
     private var hotKeys: PrompterHotKeys?
     private var session = 0
+    private var layoutCache: (key: String, layout: PrompterLayout)?
+
+    /// The script cut into rows for the strip, remembered until the text or size changes.
+    func layout(width: CGFloat, size: CGFloat) -> PrompterLayout {
+        let key = "\(Int(width))|\(size)|\(scriptText)"
+        if let layoutCache, layoutCache.key == key { return layoutCache.layout }
+        let layout = PrompterLayout(script: script, width: width, size: size)
+        layoutCache = (key, layout)
+        return layout
+    }
 
     private enum Keys {
         static let script = "prompterScript"
@@ -336,8 +346,8 @@ private final class PrompterPanel {
     private func place(on screen: NSScreen, size: PrompterController.TextSize) {
         let visible = screen.visibleFrame
         let width = min(1000, screen.frame.width * 0.62)
-        // Room for three lines, any of them wrapping once, plus the status row.
-        let height = size.points * 1.3 * 4 + 44
+        // Three rows, padding and the status row.
+        let height = PrompterLayout.pitch(size.points) * CGFloat(PrompterLayout.visibleRows) + 52
         area = NSRect(x: visible.midX - width / 2, y: visible.maxY - height - 6, width: width, height: height)
         panel?.setFrame(area, display: true)
     }
@@ -362,36 +372,124 @@ private final class PrompterPanel {
     }
 }
 
-/// What the strip shows: the line you're on and the two after it. Said words dim; cues are
-/// orange, ticked when done.
+/// The script cut into rows that fit the strip's width, so a long paragraph scrolls a row at
+/// a time like short lines do. A script line always starts a new row.
+struct PrompterLayout {
+    enum Item: Equatable {
+        case word(Int)
+        case cue(Int)
+    }
+
+    static let visibleRows = 3
+
+    let rows: [[Item]]
+    private let rowOfWord: [Int]
+    private let rowOfCue: [Int]
+
+    /// Text sizes: row height plus the gap to the next row.
+    static func pitch(_ size: CGFloat) -> CGFloat { size * 1.55 }
+    static func wordFont(_ size: CGFloat) -> NSFont { rounded(size, .semibold) }
+    static func cueFont(_ size: CGFloat) -> NSFont { rounded(size * 0.8, .bold) }
+
+    init(script: PrompterScript, width: CGFloat, size: CGFloat) {
+        let wordFont = Self.wordFont(size), cueFont = Self.cueFont(size)
+        func measure(_ text: String, _ font: NSFont) -> CGFloat {
+            (text as NSString).size(withAttributes: [.font: font]).width
+        }
+        let space = measure(" ", wordFont)
+        var rows: [[Item]] = []
+        var rowOfWord = Array(repeating: 0, count: script.words.count)
+        var rowOfCue = Array(repeating: 0, count: script.cues.count)
+        for line in script.lines {
+            // This line's words and cues in order; a cue goes before the word it's written in front of.
+            var items: [Item] = []
+            var cue = line.cues.lowerBound
+            for word in line.words {
+                while cue < line.cues.upperBound, script.cues[cue].beforeWord <= word { items.append(.cue(cue)); cue += 1 }
+                items.append(.word(word))
+            }
+            while cue < line.cues.upperBound { items.append(.cue(cue)); cue += 1 }
+
+            var row: [Item] = [], used: CGFloat = 0
+            for item in items {
+                let itemWidth = switch item {
+                case .word(let w): measure(script.words[w].text, wordFont)
+                case .cue(let c): measure("▸ " + script.cues[c].text, cueFont)
+                }
+                if !row.isEmpty, used + space + itemWidth > width {
+                    rows.append(row)
+                    row = []
+                    used = 0
+                }
+                used += (row.isEmpty ? 0 : space) + itemWidth
+                row.append(item)
+                switch item {
+                case .word(let w): rowOfWord[w] = rows.count
+                case .cue(let c): rowOfCue[c] = rows.count
+                }
+            }
+            if !row.isEmpty { rows.append(row) }
+        }
+        self.rows = rows
+        self.rowOfWord = rowOfWord
+        self.rowOfCue = rowOfCue
+    }
+
+    /// The row to keep at the top: the active cue's, or the next word's.
+    func focusRow(position: Int, activeCue: Int?) -> Int {
+        if let activeCue { return rowOfCue[activeCue] }
+        if position < rowOfWord.count { return rowOfWord[position] }
+        return max(0, rows.count - 1)
+    }
+
+    private static func rounded(_ size: CGFloat, _ weight: NSFont.Weight) -> NSFont {
+        let base = NSFont.systemFont(ofSize: size, weight: weight)
+        return base.fontDescriptor.withDesign(.rounded).flatMap { NSFont(descriptor: $0, size: size) } ?? base
+    }
+}
+
+/// What the strip shows: the row you're on at the top and the next two, scrolling up a row
+/// at a time as you read. Said words dim; cues are orange, ticked when done.
 private struct PrompterStrip: View {
     @EnvironmentObject private var prompter: PrompterController
 
     var body: some View {
-        let script = prompter.script
-        let first = prompter.focusLine
-        let shown = Array(first..<min(script.lines.count, first + 3))
         let size = prompter.textSize.points
-
-        VStack(alignment: .leading, spacing: size * 0.35) {
-            ForEach(shown, id: \.self) { index in
-                line(index, script: script, size: size)
-                    // Lines further down are dimmer, but a cue line stays easy to see.
-                    .opacity(index == first || script.lines[index].words.isEmpty ? 1 : 0.72)
-                    .transition(.asymmetric(insertion: .move(edge: .bottom).combined(with: .opacity),
-                                            removal: .move(edge: .top).combined(with: .opacity)))
+        let pitch = PrompterLayout.pitch(size)
+        VStack(alignment: .leading, spacing: 0) {
+            GeometryReader { geometry in
+                let layout = prompter.layout(width: geometry.size.width, size: size)
+                let finished = prompter.position >= prompter.script.words.count && prompter.activeCue == nil
+                // Past the last row comes one more: "End of script" (or "No script yet").
+                let focus = finished ? layout.rows.count
+                    : layout.focusRow(position: prompter.position, activeCue: prompter.activeCue)
+                // A row above and a few below, so rows slide in and out instead of popping.
+                let first = max(0, focus - 1)
+                let last = min(layout.rows.count + 1, focus + PrompterLayout.visibleRows + 1)
+                VStack(alignment: .leading, spacing: 0) {
+                    ForEach(first..<max(first, last), id: \.self) { index in
+                        Group {
+                            if index < layout.rows.count {
+                                row(layout.rows[index], size: size)
+                            } else {
+                                Text(prompter.script.words.isEmpty ? "No script yet" : "End of script")
+                                    .font(Font(PrompterLayout.wordFont(size)))
+                                    .foregroundStyle(.white.opacity(0.5))
+                            }
+                        }
+                        .frame(height: pitch, alignment: .leading)
+                        .opacity(index == focus ? 1 : index < focus ? 0 : 0.72)
+                    }
+                }
+                .offset(y: -CGFloat(focus - first) * pitch)
+                .animation(.easeOut(duration: 0.3), value: focus)
             }
-            if shown.isEmpty || (prompter.position >= script.words.count && prompter.activeCue == nil) {
-                Text(script.words.isEmpty ? "No script yet" : "End of script")
-                    .font(.system(size: size, weight: .semibold, design: .rounded))
-                    .foregroundStyle(.white.opacity(0.5))
-            }
-            Spacer(minLength: 0)
+            .frame(height: pitch * CGFloat(PrompterLayout.visibleRows))
+            .clipped()
             statusRow
         }
-        .animation(.easeOut(duration: 0.25), value: first)
         .padding(.horizontal, 24)
-        .padding(.top, 16)
+        .padding(.top, 12)
         .padding(.bottom, 10)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background(
@@ -401,37 +499,26 @@ private struct PrompterStrip: View {
         .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
     }
 
-    private func line(_ index: Int, script: PrompterScript, size: CGFloat) -> some View {
-        let line = script.lines[index]
+    private func row(_ items: [PrompterLayout.Item], size: CGFloat) -> some View {
+        let script = prompter.script
         var text = Text("")
-        var words = line.words.makeIterator()
-        var nextWord = words.next()
-        var cues = line.cues.makeIterator()
-        var nextCue = cues.next()
-        var first = true
-        func space() -> Text { first ? Text("") : Text(" ") }
-        // Words and cues in order: a cue goes before the word it's written in front of.
-        while nextWord != nil || nextCue != nil {
-            if let cue = nextCue, nextWord.map({ script.cues[cue].beforeWord <= $0 }) ?? true {
+        for (index, item) in items.enumerated() {
+            if index > 0 { text = text + Text(" ") }
+            switch item {
+            case .cue(let cue):
                 let done = prompter.isDone(cue: cue)
                 let active = prompter.activeCue == cue
-                text = text + space() + Text((done ? "✓ " : "▸ ") + script.cues[cue].text)
-                    .font(.system(size: size * 0.8, weight: .bold, design: .rounded))
+                text = text + Text((done ? "✓ " : "▸ ") + script.cues[cue].text)
+                    .font(Font(PrompterLayout.cueFont(size)))
                     .foregroundColor(done ? .orange.opacity(0.45) : active ? .orange : .orange.opacity(0.85))
-                nextCue = cues.next()
-            } else if let word = nextWord {
-                let said = word < prompter.position
-                text = text + space() + Text(script.words[word].text)
-                    .foregroundColor(said ? .white.opacity(0.32) : .white)
-                nextWord = words.next()
+            case .word(let word):
+                text = text + Text(script.words[word].text)
+                    .foregroundColor(word < prompter.position ? .white.opacity(0.32) : .white)
             }
-            first = false
         }
         return text
-            .font(.system(size: size, weight: .semibold, design: .rounded))
-            .lineSpacing(size * 0.15)
-            .fixedSize(horizontal: false, vertical: true)
-            .frame(maxWidth: .infinity, alignment: .leading)
+            .font(Font(PrompterLayout.wordFont(size)))
+            .lineLimit(1)
     }
 
     private var statusRow: some View {
@@ -443,6 +530,7 @@ private struct PrompterStrip: View {
         }
         .font(.system(size: 11, weight: .medium))
         .foregroundStyle(.white.opacity(0.55))
+        .padding(.top, 6)
     }
 
     private var statusText: String {
@@ -517,4 +605,5 @@ private func prompterHotKeyHandler(_: EventHandlerCallRef?, event: EventRef?, us
     Unmanaged<PrompterHotKeys>.fromOpaque(userData).takeUnretainedValue().pressed(id: id.id)
     return noErr
 }
+
 
