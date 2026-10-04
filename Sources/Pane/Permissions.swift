@@ -38,16 +38,29 @@ enum Permissions {
         CGRequestListenEventAccess()
     }
 
+    private static var isRelaunching = false
+
     /// Quits and opens a fresh copy of Pane, which macOS sometimes needs to apply a new
     /// permission.
+    @MainActor
     static func relaunch() {
+        // Never while recording or saving.
+        guard !isRelaunching, RecorderModel.shared.state == .idle else { return }
+        isRelaunching = true
         let pid = ProcessInfo.processInfo.processIdentifier
         let task = Process()
         task.executableURL = URL(fileURLWithPath: "/bin/sh")
         task.arguments = ["-c", "while kill -0 \(pid) 2>/dev/null; do sleep 0.1; done; open \"$0\"",
                           Bundle.main.bundlePath]
         try? task.run()
-        NSApp.terminate(nil)
+        // macOS won't quit an app with a sheet open (the window picker offers this button),
+        // so close sheets first.
+        for window in NSApp.windows {
+            if let sheet = window.attachedSheet { window.endSheet(sheet) }
+        }
+        DispatchQueue.main.async { NSApp.terminate(nil) }
+        // If something still holds the quit up, leave anyway: Pane is idle.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2) { exit(0) }
     }
 
     static func openSettings(_ pane: Pane) {
