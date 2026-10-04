@@ -93,7 +93,8 @@ enum ClickSoundAudio {
 }
 
 /// For a recording with no audio: silence the length of the video (or the trimmed part of
-/// it), with the clicks in it, handed out a tenth of a second at a time from zero.
+/// it), with the clicks in it, handed out a tenth of a second at a time, timed on the
+/// recording's own timeline like its other audio would be.
 final class ClickOnlyAudio: @unchecked Sendable {
     private let mixer: ClickSoundMixer
     private let first: Int
@@ -131,7 +132,7 @@ final class ClickOnlyAudio: @unchecked Sendable {
             buffer.initialize(repeating: 0)
             mixer.mix(into: buffer, channels: 1, start: position)
         }
-        let time = CMTime(value: CMTimeValue(position - first), timescale: CMTimeScale(ClickSound.sampleRate))
+        let time = CMTime(value: CMTimeValue(position), timescale: CMTimeScale(ClickSound.sampleRate))
         position += frames
         return ClickSoundAudio.makeSample(block: block, format: format, frames: frames, time: time)
     }

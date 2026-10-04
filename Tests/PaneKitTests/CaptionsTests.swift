@@ -184,4 +184,18 @@ final class CaptionsTests: XCTestCase {
                            colorSpace: CGColorSpace(name: CGColorSpace.sRGB)!)
         return pixels
     }
+
+    func testEditedCaptionsFollowCuts() {
+        let captions = Captions(cues: [
+            Caption(start: 0.5, end: 1.5, text: "before"),
+            Caption(start: 1.8, end: 3.2, text: "across"),
+            Caption(start: 2.2, end: 2.8, text: "inside the cut"),
+            Caption(start: 3.5, end: 4.5, text: "after"),
+        ], language: "en")
+        let edited = captions.edited(VideoEdit(cuts: [2...3]), duration: 10)
+        XCTAssertEqual(edited.cues.map(\.text), ["before", "across", "after"])
+        XCTAssertEqual(edited.cues[1].start, 1.8, accuracy: 1e-9)
+        XCTAssertEqual(edited.cues[1].end, 2.2, accuracy: 1e-9)
+        XCTAssertEqual(edited.cues[2].start, 2.5, accuracy: 1e-9)
+    }
 }

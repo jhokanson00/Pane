@@ -175,6 +175,24 @@ public struct Captions: Codable, Equatable, Sendable {
         return Captions(cues: kept, language: language)
     }
 
+    /// The captions on the timeline of a copy made with `edit`: trimmed and cut parts
+    /// left out, the rest moved up. A cue across a cut runs from its first kept moment to
+    /// its last. (For captions without the cut words, make them from the words left.)
+    public func edited(_ edit: VideoEdit, duration: Double) -> Captions {
+        let parts = edit.kept(duration: duration)
+        let kept = cues.compactMap { cue -> Caption? in
+            let pieces = parts.compactMap { part -> (Double, Double)? in
+                let start = max(cue.start, part.lowerBound), end = min(cue.end, part.upperBound)
+                guard end - start > 0.001, let from = edit.outputTime(start, duration: duration),
+                      let to = edit.outputTime(end, duration: duration) else { return nil }
+                return (from, to)
+            }
+            guard let first = pieces.first, let last = pieces.last else { return nil }
+            return Caption(start: first.0, end: last.1, text: cue.text)
+        }
+        return Captions(cues: kept, language: language)
+    }
+
     // MARK: - SRT
 
     /// The captions as an SRT file, the format video sites and players accept.

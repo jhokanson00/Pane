@@ -206,6 +206,59 @@ final class TrimTests: XCTestCase {
               + "beep at \(trimmed.beep ?? -1) s (was \(original.beep ?? -1) s), decoded sound \(trimmed.length) s")
     }
 
+    /// A cut from the middle (as for a retake): left out of picture and sound, the rest
+    /// closed up, blurs and effects still placed by source time.
+    func testExportLeavesOutACutFromTheMiddle() async throws {
+        let source = try await makeVideo()
+        let output = FileManager.default.temporaryDirectory.appendingPathComponent("pane-cut-out-\(UUID()).mp4")
+        defer {
+            try? FileManager.default.removeItem(at: source)
+            try? FileManager.default.removeItem(at: output)
+        }
+        try await RedactionExporter.export(source: source, to: output, findings: [], effects: [RedFromTwoSeconds()],
+                                           cuts: [0.5...1.5])
+
+        let asset = AVURLAsset(url: output)
+        let duration = try await asset.load(.duration).seconds
+        XCTAssertEqual(duration, 1.5, accuracy: 0.002)
+        // Before the cut, unchanged: 0.4 s is source frame 12.
+        let early = try await gray(output, at: 0.4)
+        let sourceEarly = try await gray(source, at: 12.0 / 30 + 0.001)
+        XCTAssertEqual(early, sourceEarly, accuracy: 1)
+        // After it, a second earlier: 0.7 s in is source 1.7 s, frame 51.
+        let late = try await gray(output, at: 0.7)
+        let sourceLate = try await gray(source, at: 51.0 / 30 + 0.001)
+        XCTAssertEqual(late, sourceLate, accuracy: 1)
+        // The effect starts at source 2.0 s, now 1.0 s in.
+        let red = try await gray(output, at: 1.05)
+        XCTAssertGreaterThan(red, 240)
+        let beforeRed = try await gray(output, at: 0.95)
+        XCTAssertLessThan(beforeRed, 240)
+
+        // The beep moved from 2.0 s to 1.0 s, and the sound is as long as the picture.
+        let sound = try await audio(output)
+        XCTAssertEqual(sound.beep ?? 0, 1.0, accuracy: 0.002)
+        XCTAssertEqual(sound.length, 1.5, accuracy: 0.002)
+    }
+
+    /// A trim and a cut together.
+    func testExportTrimAndCut() async throws {
+        let source = try await makeVideo()
+        let output = FileManager.default.temporaryDirectory.appendingPathComponent("pane-cut-out-\(UUID()).mp4")
+        defer {
+            try? FileManager.default.removeItem(at: source)
+            try? FileManager.default.removeItem(at: output)
+        }
+        try await RedactionExporter.export(source: source, to: output, findings: [],
+                                           timeRange: 0.2...2.4, cuts: [1.0...1.6])
+        let duration = try await AVURLAsset(url: output).load(.duration).seconds
+        XCTAssertEqual(duration, 1.6, accuracy: 0.002)
+        // The beep at source 2.0 s: 0.2 s trimmed and 0.6 s cut before it.
+        let sound = try await audio(output)
+        XCTAssertEqual(sound.beep ?? 0, 1.2, accuracy: 0.002)
+        XCTAssertEqual(sound.length, 1.6, accuracy: 0.002)
+    }
+
     func testExportWithoutRangeKeepsEverything() async throws {
         let source = try await makeVideo()
         let output = FileManager.default.temporaryDirectory.appendingPathComponent("pane-trim-out-\(UUID()).mp4")

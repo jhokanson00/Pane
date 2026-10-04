@@ -23,6 +23,8 @@ public enum RedactionExporter {
     ///   - timeRange: The part to keep, in seconds of the source (see `Trim`);
     ///     nil keeps the whole video. Blurs and effects are placed by source time, so they
     ///     stay put; the copy itself starts at zero and lasts exactly as long as the range.
+    ///   - cuts: Parts to leave out from inside that range (retakes, silences), closed up in
+    ///     the copy. See `VideoEdit`.
     public static func export(
         source: URL,
         to destination: URL,
@@ -30,6 +32,7 @@ public enum RedactionExporter {
         effects: [any FrameEffect] = [],
         clickSounds: [PointerTrack.Click] = [],
         timeRange: ClosedRange<Double>? = nil,
+        cuts: [ClosedRange<Double>] = [],
         progress: @escaping @Sendable (Double) -> Void = { _ in }
     ) async throws {
         let asset = AVURLAsset(url: source)
@@ -52,9 +55,13 @@ public enum RedactionExporter {
             audioFormats: audioFormats, size: size, frameRate: frameRate, dataRate: dataRate,
             duration: duration, findings: enabled, effects: effects, progress: progress
         )
-        job.keep = Trim.normalized(timeRange, duration: duration).map {
-            CMTimeRange(start: CMTime(seconds: $0.lowerBound, preferredTimescale: 600_000),
-                        end: CMTime(seconds: $0.upperBound, preferredTimescale: 600_000))
+        let edit = VideoEdit(trim: timeRange, cuts: cuts)
+        if !edit.keepsAll(duration: duration) {
+            let span = edit.span(duration: duration)
+            job.keep = CMTimeRange(start: CMTime(seconds: span.lowerBound, preferredTimescale: 600_000),
+                                   end: CMTime(seconds: span.upperBound, preferredTimescale: 600_000))
+            job.gaps = edit.gaps(duration: duration)
+            job.outputLength = CMTime(seconds: edit.outputDuration(duration: duration), preferredTimescale: 600_000)
         }
         job.clickSounds = clickSounds.isEmpty ? nil : ClickSoundMixer(clicks: clickSounds)
         try await withTaskCancellationHandler {
@@ -63,6 +70,11 @@ public enum RedactionExporter {
             job.cancel()
         }
     }
+}
+
+/// One audio track's retiming state, used only from that track's queue.
+private final class AudioRetimer: @unchecked Sendable {
+    var audio = PausedAudio()
 }
 
 private final class ExportJob: @unchecked Sendable {
@@ -80,6 +92,10 @@ private final class ExportJob: @unchecked Sendable {
     let progress: @Sendable (Double) -> Void
     /// The part of the source to write, shifted to start at zero; nil writes it all.
     var keep: CMTimeRange?
+    /// Cuts inside `keep`, as pauses on the source timeline: left out and closed up.
+    var gaps = RecordingPauses()
+    /// How long the copy is: `keep` less the gaps.
+    var outputLength: CMTime = .zero
     /// Mixed into the first audio track (or a new one, if there's no audio).
     var clickSounds: ClickSoundMixer?
 
@@ -186,7 +202,7 @@ private final class ExportJob: @unchecked Sendable {
 
         let group = DispatchGroup()
         let shift = keep?.start ?? .zero
-        let length = keep?.duration.seconds ?? duration
+        let length = keep != nil ? outputLength.seconds : duration
         var lastFrame: CMTime?
         var lastPixels: CVPixelBuffer?
         pump(input: videoInput, label: "video", group: group) { [self] in
@@ -195,8 +211,8 @@ private final class ExportJob: @unchecked Sendable {
                 // The writer gives the last frame the length of the one before, so the
                 // picture can end a little early. The same frame again right at the end
                 // makes it last until then; the session's end cuts the copy itself off.
-                if let keep, let pixels = lastPixels, let last = lastFrame, last < keep.duration {
-                    adaptor.append(pixels, withPresentationTime: keep.duration)
+                if keep != nil, let pixels = lastPixels, let last = lastFrame, last < outputLength {
+                    adaptor.append(pixels, withPresentationTime: outputLength)
                     lastPixels = nil
                     return true
                 }
@@ -204,8 +220,10 @@ private final class ExportJob: @unchecked Sendable {
             }
             let time = sample.presentationTimeStamp
             guard let pixels = sample.imageBuffer else { return true }
+            // Frames in a cut are left out; later ones move up to close it.
+            guard !gaps.isPaused(at: time.seconds) else { return true }
             // A frame that began just before the kept part is what shows at its start.
-            var outputTime = CMTimeMaximum(time - shift, .zero)
+            var outputTime = CMTimeMaximum(gaps.recordedTime(at: time) - shift, .zero)
             if let keep {
                 guard time < keep.end, lastFrame.map({ outputTime > $0 }) ?? true else { return true }
                 if lastFrame == nil { outputTime = .zero }
@@ -219,24 +237,20 @@ private final class ExportJob: @unchecked Sendable {
         }
         for (index, (output, input)) in zip(audioOutputs, audioInputs).enumerated() {
             let mixer = index == 0 ? clickSounds : nil
+            let retimer = AudioRetimer()
             pump(input: input, label: "audio", group: group) { [self] in
                 guard !isCancelled, let read = output.copyNextSampleBuffer() else { return false }
                 // Clicks are placed by source time, so they're mixed in before the shift.
                 let sample = mixer.flatMap { ClickSoundAudio.mixed(read, with: $0) } ?? read
-                if let keep {
-                    guard sample.numSamples > 0, sample.presentationTimeStamp - shift < keep.duration,
-                          let shifted = Self.shifted(sample, by: shift) else { return true }
-                    input.append(shifted)
-                } else {
-                    input.append(sample)
-                }
+                appendEdited(sample, to: input, retimer: retimer, shift: shift)
                 return true
             }
         }
         if let clickOnly, let clickOnlyInput {
+            let retimer = AudioRetimer()
             pump(input: clickOnlyInput, label: "clicks", group: group) { [self] in
                 guard !isCancelled, let sample = clickOnly.next() else { return false }
-                clickOnlyInput.append(sample)
+                appendEdited(sample, to: clickOnlyInput, retimer: retimer, shift: shift)
                 return true
             }
         }
@@ -254,10 +268,25 @@ private final class ExportJob: @unchecked Sendable {
             writer.cancelWriting()
             throw ExportError.failed(reader.error)
         }
-        if let keep { writer.endSession(atSourceTime: keep.duration) }
+        if keep != nil { writer.endSession(atSourceTime: outputLength) }
         await writer.finishWriting()
         guard writer.status == .completed else { throw ExportError.failed(writer.error) }
         progress(1)
+    }
+
+    /// Writes audio for a trimmed or cut copy: the parts in cuts left out and the rest
+    /// moved up (by the pause retiming), then shifted to start at zero.
+    private func appendEdited(_ sample: CMSampleBuffer, to input: AVAssetWriterInput,
+                              retimer: AudioRetimer, shift: CMTime) {
+        guard keep != nil else {
+            input.append(sample)
+            return
+        }
+        for piece in retimer.audio.retime(sample, pauses: gaps) {
+            guard piece.numSamples > 0, piece.presentationTimeStamp - shift < outputLength,
+                  let shifted = Self.shifted(piece, by: shift) else { continue }
+            input.append(shifted)
+        }
     }
 
     /// A copy of `sample` moved earlier by `shift`.
