@@ -92,7 +92,25 @@ final class ReviewSession: ObservableObject, Identifiable {
     let script: PrompterScript?
     /// Sentences said again, each cut from exports unless kept.
     @Published var retakes: [RetakeCut] = [] {
-        didSet { updatePointerEffects() }
+        didSet { updateCuts() }
+    }
+    /// How loud the narration is, every 10 ms, for placing cuts in the silence.
+    var audioLevels: AudioLevels?
+    /// How much of the silence before each retake is kept, so it doesn't start abruptly.
+    @Published var cutPause: CutEdges.Pause = .saved {
+        didSet {
+            UserDefaults.standard.set(cutPause.rawValue, forKey: CutEdges.Pause.key)
+            updateCuts()
+        }
+    }
+    /// The parts left out of exports and the preview: the cut retakes, placed in the
+    /// silence around them (see `updateCuts` in ReviewRetakes.swift).
+    @Published var cuts: [ClosedRange<Double>] = [] {
+        didSet {
+            guard cuts != oldValue else { return }
+            updatePointerEffects()
+            rebuildPreview()
+        }
     }
     @Published var retakeState: RetakeState = .idle
     var retakeTask: Task<Void, Never>?
@@ -100,6 +118,10 @@ final class ReviewSession: ObservableObject, Identifiable {
     /// What the text scan read, once the recording has been scanned. Blur Text needs it.
     @Published private(set) var scan: ScanResult?
     private let preview = PreviewLayers()
+    /// What the player plays: the recording less the cuts, as exported. Everything else
+    /// here works in the recording's own time (see `seek` and `currentTime`).
+    private var previewEdit = VideoEdit()
+    private var previewTask: Task<Void, Never>?
     private var timeObserver: Any?
     private var exportTask: Task<Void, Never>?
     private var pointerSwitch: AnyCancellable?
@@ -120,26 +142,20 @@ final class ReviewSession: ObservableObject, Identifiable {
 
         // The player shows the same blur and pointer effects the export will write.
         let item = AVPlayerItem(url: sourceURL)
-        let preview = preview
         preview.findings = scan?.findings ?? []
         self.player = AVPlayer(playerItem: item)
         updatePointerEffects()
-        Task {
-            item.videoComposition = try? await AVMutableVideoComposition.videoComposition(
-                with: item.asset
-            ) { request in
-                let time = request.compositionTime.seconds
-                let output = Redaction.apply(to: request.sourceImage, findings: preview.findings, at: time)
-                request.finish(with: preview.effects.apply(to: output, at: time), context: nil)
-            }
+        Task { [preview] in
+            item.videoComposition = await Self.videoComposition(for: item.asset, preview: preview, edit: VideoEdit(),
+                                                                duration: duration)
         }
 
         timeObserver = player.addPeriodicTimeObserver(
             forInterval: CMTime(value: 1, timescale: 30), queue: .main
         ) { [weak self] time in
             MainActor.assumeIsolated {
-                self?.currentTime = time.seconds
-                self?.skipCutWhilePlaying(at: time.seconds)
+                guard let self else { return }
+                self.currentTime = self.previewEdit.sourceTime(time.seconds, duration: self.duration)
             }
         }
         // The Pointer effects switch, in settings or here, applies right away. (It sends
@@ -158,6 +174,7 @@ final class ReviewSession: ObservableObject, Identifiable {
         exportTask?.cancel()
         captionTask?.cancel()
         retakeTask?.cancel()
+        previewTask?.cancel()
     }
 
     var destinationURL: URL { Self.editedURL(for: sourceURL) }
@@ -232,8 +249,96 @@ final class ReviewSession: ObservableObject, Identifiable {
         item.videoComposition = item.videoComposition?.copy() as? AVVideoComposition
     }
 
+    /// Shows `time` of the recording; inside a cut, where the cut ends.
     func seek(to time: Double) {
-        player.seek(to: CMTime(seconds: time, preferredTimescale: 600), toleranceBefore: .zero, toleranceAfter: .zero)
+        let parts = previewEdit.kept(duration: duration)
+        let shown = previewEdit.outputTime(time, duration: duration)
+            ?? parts.first { $0.lowerBound >= time }.flatMap { previewEdit.outputTime($0.lowerBound, duration: duration) }
+            ?? previewEdit.outputDuration(duration: duration)
+        player.seek(to: CMTime(seconds: shown, preferredTimescale: 600), toleranceBefore: .zero, toleranceAfter: .zero)
+    }
+
+    // MARK: - Preview
+
+    /// Plays the recording without the cuts, as the export will be: kept parts played one
+    /// after another, with the same short fades where they meet. Rebuilt when the cuts
+    /// change, keeping the place and whether it's playing.
+    private func rebuildPreview() {
+        let edit = VideoEdit(cuts: cuts)
+        guard edit != previewEdit else { return }
+        previewTask?.cancel()
+        previewTask = Task { [sourceURL, duration, preview] in
+            // Clicking through several retakes rebuilds once.
+            try? await Task.sleep(for: .milliseconds(150))
+            guard !Task.isCancelled,
+                  let item = try? await Self.previewItem(url: sourceURL, edit: edit, duration: duration, preview: preview),
+                  !Task.isCancelled else { return }
+            let time = currentTime, playing = player.rate != 0
+            previewEdit = edit
+            player.replaceCurrentItem(with: item)
+            seek(to: time)
+            if playing { player.play() }
+        }
+    }
+
+    /// The recording, or with cuts a composition of its kept parts.
+    private static func previewItem(url: URL, edit: VideoEdit, duration: Double,
+                                    preview: PreviewLayers) async throws -> AVPlayerItem {
+        let asset = AVURLAsset(url: url)
+        let item: AVPlayerItem
+        if edit.keepsAll(duration: duration) {
+            item = AVPlayerItem(asset: asset)
+        } else {
+            let composition = AVMutableComposition()
+            let parts = edit.kept(duration: duration).map {
+                CMTimeRange(start: CMTime(seconds: $0.lowerBound, preferredTimescale: 600_000),
+                            end: CMTime(seconds: $0.upperBound, preferredTimescale: 600_000))
+            }
+            let mix = AVMutableAudioMix()
+            for track in try await asset.load(.tracks)
+            where track.mediaType == .video || track.mediaType == .audio {
+                guard let copy = composition.addMutableTrack(withMediaType: track.mediaType,
+                                                             preferredTrackID: kCMPersistentTrackID_Invalid) else { continue }
+                var at = CMTime.zero
+                for part in parts {
+                    try copy.insertTimeRange(part, of: track, at: at)
+                    at = at + part.duration
+                }
+                if track.mediaType == .video {
+                    copy.preferredTransform = try await track.load(.preferredTransform)
+                } else {
+                    mix.inputParameters.append(joinFades(for: copy, parts: parts))
+                }
+            }
+            composition.naturalSize = try await asset.loadTracks(withMediaType: .video).first?.load(.naturalSize) ?? .zero
+            item = AVPlayerItem(asset: composition)
+            item.audioMix = mix
+        }
+        item.videoComposition = await videoComposition(for: item.asset, preview: preview, edit: edit, duration: duration)
+        return item
+    }
+
+    /// The export's 10 ms fades where kept parts meet (see `JoinFades`).
+    private static func joinFades(for track: AVCompositionTrack, parts: [CMTimeRange]) -> AVAudioMixInputParameters {
+        let parameters = AVMutableAudioMixInputParameters(track: track)
+        let fade = CMTime(seconds: JoinFades.length, preferredTimescale: 600_000)
+        var at = CMTime.zero
+        for part in parts.dropLast() {
+            at = at + part.duration
+            parameters.setVolumeRamp(fromStartVolume: 1, toEndVolume: 0, timeRange: CMTimeRange(start: at - fade, duration: fade))
+            parameters.setVolumeRamp(fromStartVolume: 0, toEndVolume: 1, timeRange: CMTimeRange(start: at, duration: fade))
+        }
+        return parameters
+    }
+
+    /// Draws the blurs and effects on each frame, at its time in the recording.
+    private static func videoComposition(for asset: AVAsset, preview: PreviewLayers, edit: VideoEdit,
+                                         duration: Double) async -> AVVideoComposition? {
+        try? await AVMutableVideoComposition.videoComposition(with: asset) { request in
+            let time = edit.sourceTime(request.compositionTime.seconds, duration: duration)
+            let output = Redaction.apply(to: request.sourceImage, findings: preview.findings, at: time)
+            request.finish(with: preview.effects.apply(to: output, at: time), context: nil)
+        }
     }
 
     func setAll(enabled: Bool) {

@@ -40,6 +40,26 @@ enum ClickSoundAudio {
     /// The same audio with the clicks added, or nil when no click falls in it (or it isn't
     /// the decoded format), in which case the original is used as is.
     static func mixed(_ sample: CMSampleBuffer, with mixer: ClickSoundMixer) -> CMSampleBuffer? {
+        edited(sample, when: { mixer.overlaps(start: $0, frames: $1) }) { samples, channels, start in
+            mixer.mix(into: samples, channels: channels, start: start)
+        }
+    }
+
+    /// The same audio faded where kept parts meet, or nil when no join falls in it.
+    static func faded(_ sample: CMSampleBuffer, with fades: JoinFades) -> CMSampleBuffer? {
+        edited(sample, when: { fades.overlaps(start: $0, frames: $1) }) { samples, channels, start in
+            fades.apply(to: samples, channels: channels, start: start)
+        }
+    }
+
+    /// A copy of decoded audio (see `decodedSettings`) changed by `edit`, which gets the
+    /// interleaved samples, the channel count and the first sample's position at 48 kHz.
+    /// Nil when `overlaps` (given that position and the length) says there's nothing to
+    /// change, or the audio isn't in the decoded format.
+    private static func edited(
+        _ sample: CMSampleBuffer, when overlaps: (Int, Int) -> Bool,
+        edit: (UnsafeMutableBufferPointer<Float>, Int, Int) -> Void
+    ) -> CMSampleBuffer? {
         guard let format = sample.formatDescription,
               let description = CMAudioFormatDescriptionGetStreamBasicDescription(format)?.pointee,
               description.mFormatID == kAudioFormatLinearPCM, description.mBitsPerChannel == 32,
@@ -51,7 +71,7 @@ enum ClickSoundAudio {
         let channels = Int(description.mChannelsPerFrame)
         let frames = CMSampleBufferGetNumSamples(sample)
         let start = samplePosition(sample.presentationTimeStamp)
-        guard channels > 0, frames > 0, mixer.overlaps(start: start, frames: frames) else { return nil }
+        guard channels > 0, frames > 0, overlaps(start, frames) else { return nil }
 
         let length = CMBlockBufferGetDataLength(source)
         guard length >= frames * channels * MemoryLayout<Float>.size,
@@ -62,8 +82,7 @@ enum ClickSoundAudio {
               CMBlockBufferCopyDataBytes(source, atOffset: 0, dataLength: length, destination: pointer) == noErr
         else { return nil }
         pointer.withMemoryRebound(to: Float.self, capacity: frames * channels) { floats in
-            mixer.mix(into: UnsafeMutableBufferPointer(start: floats, count: frames * channels),
-                      channels: channels, start: start)
+            edit(UnsafeMutableBufferPointer(start: floats, count: frames * channels), channels, start)
         }
         return makeSample(block: block, format: format, frames: frames, time: sample.presentationTimeStamp)
     }

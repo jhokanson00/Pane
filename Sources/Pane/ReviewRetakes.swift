@@ -19,9 +19,15 @@ extension ReviewSession {
         case failed(String)
     }
 
-    /// The parts left out of exports: the cut retakes.
-    var cuts: [ClosedRange<Double>] {
-        retakes.filter(\.isCut).map(\.retake.cut)
+    /// Places the cut retakes in the silence around them (see `CutEdges`), once the
+    /// narration's loudness is known; until then, where the words say.
+    func updateCuts() {
+        let found = retakes.filter(\.isCut).map(\.retake.cut)
+        if let audioLevels, let spokenWords {
+            cuts = CutEdges.placed(found, levels: audioLevels, words: spokenWords, pause: cutPause)
+        } else {
+            cuts = found
+        }
     }
 
     /// How much the cuts take out, in seconds (overlaps counted once).
@@ -34,21 +40,27 @@ extension ReviewSession {
     func findRetakes() {
         guard let script, retakeTask == nil else { return }
         guard #available(macOS 26, *) else { return }
-        if let spokenWords {
-            retakes = RetakeFinder.find(script: script, words: spokenWords).map { RetakeCut(retake: $0) }
-            return
-        }
         retakeState = .working("Looking for retakes…")
-        let source = sourceURL
+        let source = sourceURL, heard = spokenWords
         retakeTask = Task {
             do {
-                let words = try await CaptionTranscriber.words(url: source) { stage in
-                    Task { @MainActor [weak self] in
-                        if case .downloading = stage { self?.retakeState = .working("Downloading speech recognition…") }
+                let words: [CaptionWord]
+                if let heard {
+                    words = heard
+                } else {
+                    words = try await CaptionTranscriber.words(url: source) { stage in
+                        Task { @MainActor [weak self] in
+                            if case .downloading = stage { self?.retakeState = .working("Downloading speech recognition…") }
+                        }
                     }
                 }
                 guard !Task.isCancelled else { return }
+                // How loud the narration is, to place the cuts in the silence. Without it the
+                // cuts go where the words say.
+                let levels = try? await AudioLevels.read(url: source)
+                guard !Task.isCancelled else { return }
                 spokenWords = words
+                audioLevels = levels
                 retakes = RetakeFinder.find(script: script, words: words).map { RetakeCut(retake: $0) }
                 retakeState = .idle
             } catch {
@@ -65,12 +77,5 @@ extension ReviewSession {
 
     func setAllRetakes(cut: Bool) {
         for index in retakes.indices { retakes[index].isCut = cut }
-    }
-
-    /// Playing through a cut jumps over it, so the preview plays as the export will.
-    func skipCutWhilePlaying(at time: Double) {
-        guard player.rate != 0,
-              let cut = cuts.first(where: { $0.lowerBound <= time && time < $0.upperBound - 0.05 }) else { return }
-        seek(to: cut.upperBound)
     }
 }

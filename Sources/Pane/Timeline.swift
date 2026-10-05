@@ -93,8 +93,20 @@ struct ReviewTimeline: View {
             }
 
             HStack(spacing: 8) {
-                Text("Drag the ends of the Video bar to trim, and the ends of a blur to change when it shows.")
-                    .foregroundStyle(.secondary)
+                if session.retakes.isEmpty {
+                    Text("Drag the ends of the Video bar to trim, and the ends of a blur to change when it shows.")
+                        .foregroundStyle(.secondary)
+                } else {
+                    Text("Pause before retakes")
+                        .foregroundStyle(.secondary)
+                    Picker("Pause before retakes", selection: $session.cutPause) {
+                        ForEach(CutEdges.Pause.allCases) { Text($0.label).tag($0) }
+                    }
+                    .pickerStyle(.segmented)
+                    .labelsHidden()
+                    .fixedSize()
+                    .help("How much of the silence before each retake to keep, so it doesn't start abruptly")
+                }
                 Spacer()
                 Text(summary)
                     .monospacedDigit()

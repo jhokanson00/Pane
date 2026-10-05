@@ -197,9 +197,18 @@ way the teleprompter did. Wherever you went back and said words again, the first
 cut: from where it started to where the retake starts, so anything said in between
 ("sorry, let me redo that") goes too.
 
+Speech recognition times words up to a tenth of a second off, so the cut's edges are
+placed by the sound itself (`PaneKit/CutEdges.swift`): the cut starts just before the
+flubbed try's first sound, keeping all the quiet before it (the screen may be busy
+then), and ends a little before the retake's first sound, keeping some of the quiet
+before it as a lead-in. **Pause before retakes** sets how much: Short (0.1 s), Medium
+(0.25 s) or Long (0.5 s); only quiet that's there is kept, never added. Where the kept
+parts meet, the sound fades out and back in over 10 ms, so a join never clicks.
+
 The timeline's **Retakes** lane shows each cut in red, and the Video bar is shaded
 there. Click one to keep it (an outline), and again to cut it; **Keep All Retakes** and
-**Cut All Retakes** change them all. The preview skips cuts while it plays. **Export
+**Cut All Retakes** change them all. The preview plays the kept parts one after
+another, with the same fades, so it sounds like the export. **Export
 Video** leaves them out with the sound in step, and the .srt and burned-in captions
 leave out what was said in them. **Send to Final Cut** puts one screen clip on the
 timeline per kept part, so a cut can be brought back by dragging a clip's end. Cuts
@@ -271,7 +280,7 @@ swift run pane-tool click-demo build/test/clicks.mp4 [--narration]  # the sample
 swift run pane-tool click-check "<recording>.mp4" "<export>.mp4"  # click timing, narration level, durations
 swift run pane-tool captions "<recording>.mp4" [burned.mp4]   # captions as SRT; optionally burned into a copy
 swift run pane-tool follow "<recording>.mp4" script.txt  # how far behind the speaker the teleprompter stays
-swift run pane-tool retakes "<recording>.mp4" script.txt  # the retakes Review would cut
+swift run pane-tool retakes "<recording>.mp4" script.txt [out.mp4] [--pause long]  # the retakes Review would cut, and a copy without them
 swift test
 ```
 
@@ -297,6 +306,7 @@ swift test
 | `Sources/Pane/Prompter.swift` | The teleprompter strip, its keys and audio |
 | `Sources/PaneKit/ScriptFollower.swift` | Follows spoken words through the script |
 | `Sources/PaneKit/RetakeFinder.swift` | Finds sentences said again |
+| `Sources/PaneKit/CutEdges.swift` | Places cuts in the quiet between words; fades at joins |
 | `Sources/PaneKit/VideoEdit.swift` | Trim plus cuts: what's kept, and time in the export |
 
 You can also open `Package.swift` in Xcode to browse and edit the code.

@@ -290,9 +290,13 @@ case "follow":
 
 case "retakes":
     // With out.mp4, also exports the video with the retakes cut (and pointer effects), as
-    // Export Video does.
+    // Export Video does, with the cuts placed in the silence (--pause short|medium|long).
+    let pause = args.firstIndex(of: "--pause").flatMap { args.indices.contains($0 + 1) ? args[$0 + 1] : nil }
+        .flatMap(CutEdges.Pause.init(rawValue:)) ?? .medium
+    let args = args.enumerated().filter { $0.element != "--pause" && ($0.offset == 0 || args[$0.offset - 1] != "--pause") }
+        .map(\.element)
     guard args.count == 3 || args.count == 4 else {
-        fail("usage: pane-tool retakes <video or audio> <script.txt> [out.mp4]")
+        fail("usage: pane-tool retakes <video or audio> <script.txt> [out.mp4] [--pause short|medium|long]")
     }
     guard #available(macOS 26, *) else { fail("Needs macOS 26 or later") }
     let script = PrompterScript(try String(contentsOfFile: args[2], encoding: .utf8))
@@ -312,7 +316,10 @@ case "retakes":
         let effects: [any FrameEffect] = [PointerTrack.load(from: url).flatMap {
             PointerRenderer(track: $0, style: PointerEffectStyle(), videoSize: size)
         }].compactMap { $0 }
-        let cuts = retakes.map(\.cut)
+        let levels = try await AudioLevels.read(url: url)
+        let cuts = CutEdges.placed(retakes.map(\.cut), levels: levels, words: words, pause: pause)
+        print(String(format: "Speech is louder than %.0f dB. Cuts placed (%@ pause):", levels.speechThreshold, pause.rawValue))
+        for cut in cuts { print(String(format: "   %.2f–%.2f s", cut.lowerBound, cut.upperBound)) }
         try await RedactionExporter.export(source: url, to: out, findings: [], effects: effects, cuts: cuts)
         let duration = try await AVURLAsset(url: url).load(.duration).seconds
         let expected = VideoEdit(cuts: cuts).outputDuration(duration: duration)

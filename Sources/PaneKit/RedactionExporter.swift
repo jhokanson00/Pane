@@ -62,6 +62,8 @@ public enum RedactionExporter {
                                    end: CMTime(seconds: span.upperBound, preferredTimescale: 600_000))
             job.gaps = edit.gaps(duration: duration)
             job.outputLength = CMTime(seconds: edit.outputDuration(duration: duration), preferredTimescale: 600_000)
+            let fades = JoinFades(edit: edit, duration: duration)
+            job.fades = fades.isEmpty ? nil : fades
         }
         job.clickSounds = clickSounds.isEmpty ? nil : ClickSoundMixer(clicks: clickSounds)
         try await withTaskCancellationHandler {
@@ -96,6 +98,8 @@ private final class ExportJob: @unchecked Sendable {
     var gaps = RecordingPauses()
     /// How long the copy is: `keep` less the gaps.
     var outputLength: CMTime = .zero
+    /// Fades where the parts on either side of a gap meet.
+    var fades: JoinFades?
     /// Mixed into the first audio track (or a new one, if there's no audio).
     var clickSounds: ClickSoundMixer?
 
@@ -240,8 +244,9 @@ private final class ExportJob: @unchecked Sendable {
             let retimer = AudioRetimer()
             pump(input: input, label: "audio", group: group) { [self] in
                 guard !isCancelled, let read = output.copyNextSampleBuffer() else { return false }
-                // Clicks are placed by source time, so they're mixed in before the shift.
-                let sample = mixer.flatMap { ClickSoundAudio.mixed(read, with: $0) } ?? read
+                // Clicks and fades are placed by source time, so they go in before the shift.
+                let mixed = mixer.flatMap { ClickSoundAudio.mixed(read, with: $0) } ?? read
+                let sample = fades.flatMap { ClickSoundAudio.faded(mixed, with: $0) } ?? mixed
                 appendEdited(sample, to: input, retimer: retimer, shift: shift)
                 return true
             }

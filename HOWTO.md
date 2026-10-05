@@ -52,7 +52,8 @@ If you recorded with the teleprompter, Pane finds the sentences you said again. 
 
 - Click a red bar to keep that first try after all. Click it again to cut it.
 - **Keep All Retakes** or **Cut All Retakes** changes them all at once.
-- The preview skips what's cut, so you hear the video as it will be exported.
+- **Pause before retakes** (Short, Medium or Long) sets how much quiet stays before each retake, so it doesn't start abruptly.
+- The preview leaves out what's cut, so you hear the video as it will be exported.
 
 ## Captions
 
