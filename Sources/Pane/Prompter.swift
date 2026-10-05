@@ -341,7 +341,7 @@ private final class PrompterPanel {
     private func place(on screen: NSScreen, size: PrompterController.TextSize) {
         let visible = screen.visibleFrame
         // Narrow, so the eyes barely move from side to side while reading.
-        let width = min(500, screen.frame.width * 0.31)
+        let width = min(575, screen.frame.width * 0.36)
         // Three rows, padding and the status row.
         let height = PrompterLayout.pitch(size.points) * CGFloat(PrompterLayout.visibleRows) + 52
         area = NSRect(x: visible.midX - width / 2, y: visible.maxY - height - 6, width: width, height: height)
