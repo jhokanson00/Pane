@@ -449,7 +449,7 @@ private struct RetakeTrack: View {
                     .fill(item.isCut ? Color.red.opacity(0.7) : Color.clear)
                     .overlay(RoundedRectangle(cornerRadius: 3).stroke(Color.red.opacity(0.8), lineWidth: 1))
                     .frame(width: length)
-                    .offset(x: start)
+                    // Before the offset: after it, the clickable area stays at the left end.
                     .contentShape(Rectangle())
                     .onTapGesture {
                         session.setRetake(item.id, cut: !item.isCut)
@@ -457,6 +457,7 @@ private struct RetakeTrack: View {
                     }
                     .help((item.isCut ? "Cut: " : "Kept: ") + "\"\(item.retake.text)…\" said again. Click to "
                           + (item.isCut ? "keep this try." : "cut this try."))
+                    .offset(x: start)
             }
         }
         .coordinateSpace(name: "track")
