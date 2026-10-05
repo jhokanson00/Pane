@@ -2,9 +2,11 @@
 
 A private Mac screen recorder for making tutorial videos. Record your screen with your
 camera in a corner, and Pane finds and blurs emails, phone numbers, passwords and keys
-for you before you share. Pointer highlights, click sounds, zoom toward clicks,
-keyboard shortcut badges and captions are all added at export, so they can be changed
-after you record. Native Swift, runs entirely on your Mac, free and open source.
+for you before you share. A teleprompter follows your voice as you read your script,
+and the sentences you say again are cut for you. Pointer highlights, click sounds, zoom
+toward clicks, keyboard shortcut badges and captions are all added at export, so they
+can be changed after you record. Native Swift, runs entirely on your Mac, free and open
+source.
 
 ## Download
 
@@ -125,6 +127,27 @@ gap, so the pointer effects and click times still line up. The camera bubble sta
 screen while paused, and stopping while paused saves the recording as usual. The timing
 logic is `PaneKit/RecordingPauses.swift`.
 
+## Teleprompter
+
+Write your script in Pane (**Write Script…** in the main window's Teleprompter section,
+or open a .txt or .md file), and while you record it shows at the top of the screen,
+just under your Mac's camera: three rows of large text in a narrow strip, so your eyes
+barely move as you read. It moves as you speak, with no auto-scroll to keep up with:
+Pane listens to the microphone it's already recording and follows your words through
+the script with Apple's on-device speech recognition (macOS 26 or later). Words you've
+said dim, and the row you're on stays at the top.
+
+- Put stage directions in square brackets, like `[Click Settings]`. They show in orange
+  and tick off when you click.
+- Skip ahead, ad-lib or go back: the teleprompter finds its place again. Say a sentence
+  over and it goes back with you.
+- **Control-Option-↑** starts the sentence over, **Control-Option-↓** skips to the next
+  one. They work in any app, need no permission, and are never shown as shortcut badges.
+- The strip is one of Pane's windows, so it's never recorded. Clicks pass through it,
+  and it fades while the pointer is over it.
+- **Rehearse** shows it and follows your voice without recording. Text sizes: Small,
+  Medium, Large. With the microphone off, it shows the script and the keys move it.
+
 ## Keyboard shortcuts
 
 With **Show keyboard shortcuts** on (Pointer settings, off by default), Pane logs the
@@ -164,6 +187,23 @@ blurs and pointer effects where they were. **Send to Final Cut** keeps the whole
 and trims the clips in the project instead, so the cut parts can be brought back by
 dragging a clip's ends; clicks outside the kept part get no marker. The trim lasts while
 the review window is open.
+
+## Retakes
+
+A recording made with the teleprompter keeps its script with the video (in the
+`com.jacobhokanson.pane.script` extended attribute). When it opens in the review window,
+Pane hears the narration (once; captions reuse it) and follows it through the script the
+way the teleprompter did. Wherever you went back and said words again, the first try is
+cut: from where it started to where the retake starts, so anything said in between
+("sorry, let me redo that") goes too.
+
+The timeline's **Retakes** lane shows each cut in red, and the Video bar is shaded
+there. Click one to keep it (an outline), and again to cut it; **Keep All Retakes** and
+**Cut All Retakes** change them all. The preview skips cuts while it plays. **Export
+Video** leaves them out with the sound in step, and the .srt and burned-in captions
+leave out what was said in them. **Send to Final Cut** puts one screen clip on the
+timeline per kept part, so a cut can be brought back by dragging a clip's end. Cuts
+work together with the trim.
 
 ## Captions
 
@@ -230,6 +270,8 @@ swift run pane-tool trim "<recording>.mp4" build/test/trim.mp4 3 72  # export on
 swift run pane-tool click-demo build/test/clicks.mp4 [--narration]  # the sample with click sounds
 swift run pane-tool click-check "<recording>.mp4" "<export>.mp4"  # click timing, narration level, durations
 swift run pane-tool captions "<recording>.mp4" [burned.mp4]   # captions as SRT; optionally burned into a copy
+swift run pane-tool follow "<recording>.mp4" script.txt  # how far behind the speaker the teleprompter stays
+swift run pane-tool retakes "<recording>.mp4" script.txt  # the retakes Review would cut
 swift test
 ```
 
@@ -252,6 +294,10 @@ swift test
 | `Sources/PaneKit/RedactionExporter.swift` | The frosted blur and the export |
 | `Sources/PaneKit/PointerTrack.swift` | The pointer log, saved with the video |
 | `Sources/PaneKit/PointerEffects.swift` | Draws the pointer highlight and click rings |
+| `Sources/Pane/Prompter.swift` | The teleprompter strip, its keys and audio |
+| `Sources/PaneKit/ScriptFollower.swift` | Follows spoken words through the script |
+| `Sources/PaneKit/RetakeFinder.swift` | Finds sentences said again |
+| `Sources/PaneKit/VideoEdit.swift` | Trim plus cuts: what's kept, and time in the export |
 
 You can also open `Package.swift` in Xcode to browse and edit the code.
 

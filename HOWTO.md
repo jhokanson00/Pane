@@ -9,6 +9,16 @@
 
 Recordings are saved in your **Movies ▸ Pane** folder.
 
+## Read from a script
+
+The teleprompter shows your script at the top of the screen and moves along as you talk. It's never in the recording, and clicks pass through it. Needs macOS 26.
+
+1. In Pane's window, under **Teleprompter**, click **Write Script…** and type or paste what you'll say.
+2. Put what to do in square brackets, like **[Click Settings]**. It shows in orange and ticks off when you click.
+3. Turn on **Show while recording**. Click **Rehearse** to practice without recording.
+
+Made a mistake? Just say the sentence again: the teleprompter goes back with you. Or press **Control-Option-↑** to start a sentence over, or **Control-Option-↓** to skip to the next one.
+
 ## Hide private info
 
 - With **Auto-blur** on, Pane checks each recording when you stop. It blurs emails, phone numbers, passwords, keys and card numbers, then opens the Review window.
@@ -35,6 +45,14 @@ The timeline under the video shows your recording, each blur, your clicks and ca
 
 - Drag either end of the **Video** bar to cut off the start or the end. **Clear Trim** undoes it.
 - Drag either end of a blur you drew to change when it shows.
+
+## Cut retakes
+
+If you recorded with the teleprompter, Pane finds the sentences you said again. Each first try shows in red in the **Retakes** lane and is cut from your video, so only your last try stays.
+
+- Click a red bar to keep that first try after all. Click it again to cut it.
+- **Keep All Retakes** or **Cut All Retakes** changes them all at once.
+- The preview skips what's cut, so you hear the video as it will be exported.
 
 ## Captions
 
