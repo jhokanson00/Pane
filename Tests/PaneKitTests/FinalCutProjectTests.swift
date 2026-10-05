@@ -154,8 +154,10 @@ final class FinalCutProjectTests: XCTestCase {
         let captionsOnly = { var p = self.captioned; p.camera = nil; p.markers = []; return p }()
         let everything = { var p = trimmedWithSounds; p.captions = self.captioned.captions; return p }()
         let everythingCut = { var p = everything; p.cuts = [150..<180, 240..<260]; return p }()
+        let everythingSetAside = { var p = everythingCut; p.setAside = [100..<140, 180..<240]; return p }()
+        let setAsideOnly = { var p = self.project; p.camera = nil; p.audioTracks = 0; p.setAside = [30..<60]; return p }()
         for project in [project, plain, trimmed, projectWithClickSounds, soundsOnly, trimmedWithSounds, captioned,
-                        captionsOnly, everything, everythingCut] {
+                        captionsOnly, everything, everythingCut, everythingSetAside, setAsideOnly] {
             let file = FileManager.default.temporaryDirectory.appendingPathComponent("pane-\(UUID()).fcpxml")
             try project.xml.write(to: file, atomically: true, encoding: .utf8)
             defer { try? FileManager.default.removeItem(at: file) }
@@ -187,5 +189,26 @@ final class FinalCutProjectTests: XCTestCase {
         XCTAssertTrue(xml.contains(#"<marker start="120/30s""#))
         XCTAssertTrue(xml.contains(#"<marker start="210/30s""#))
         XCTAssertFalse(xml.contains(#"<marker start="165/30s""#))
+    }
+
+    /// A retake kept to decide on in Final Cut, frames 150–180 inside the 90–375 trim: the
+    /// timeline keeps its length, with a gap where the retake was and the retake's screen
+    /// and camera connected above the gap in the Retakes roles, with its own clicks.
+    func testRetakesKeptGoOnALayerOfTheirOwn() {
+        var kept = trimmed
+        kept.setAside = [150..<180]
+        kept.markers = [(4.0, "Click"), (5.5, "Click"), (7.0, "Click")]  // frames 120, 165 (retake), 210
+        let xml = kept.xml
+        XCTAssertTrue(xml.contains(#"<sequence format="r1" duration="285/30s""#), "Nothing is left out")
+        XCTAssertTrue(xml.contains(#"<asset-clip ref="r2" offset="0s" name="Screen" start="90/30s" duration="60/30s""#))
+        XCTAssertTrue(xml.contains(#"<gap name="Retake" offset="60/30s" start="150/30s" duration="30/30s">"#))
+        XCTAssertTrue(xml.contains(#"<asset-clip ref="r2" lane="1" offset="150/30s" name="Retake" start="150/30s" duration="30/30s" videoRole="video.Retakes" audioRole="dialogue.Retakes"/>"#))
+        XCTAssertTrue(xml.contains(#"<asset-clip ref="r3" lane="2" offset="150/30s" name="Camera" start="150/30s" duration="30/30s" videoRole="video.Retakes"/>"#))
+        XCTAssertTrue(xml.contains(#"<asset-clip ref="r2" offset="90/30s" name="Screen" start="180/30s" duration="195/30s""#))
+        // The retake's click is marked on the gap, so it goes if the gap is deleted.
+        let gap = xml.range(of: "<gap")!.lowerBound..<xml.range(of: "</gap>")!.upperBound
+        XCTAssertTrue(xml[gap].contains(#"<marker start="165/30s""#))
+        XCTAssertTrue(xml.contains(#"<marker start="120/30s""#))
+        XCTAssertTrue(xml.contains(#"<marker start="210/30s""#))
     }
 }

@@ -7,7 +7,7 @@
 3. Click **Start Recording** (⇧⌘R). Recording starts after a 3-2-1 countdown.
 4. To pause or stop, click the timer in the menu bar, then **Pause** (⌘P) or **Stop**.
 
-Recordings are saved in your **Movies ▸ Pane** folder.
+Type a **Name** above Start Recording, like "Share a Project". Each video gets its own folder in **Movies ▸ Pane**, named with the date, like "Share a Project 2026-10-05". Record it again the same day and it's "Take 2". Without a name it's "Untitled" with the time.
 
 ## Read from a script
 
@@ -54,6 +54,7 @@ If you recorded with the teleprompter, Pane finds the sentences you said again. 
 - **Keep All Retakes** or **Cut All Retakes** changes them all at once.
 - **Pause before retakes** (Short, Medium or Long) sets how much quiet stays before each retake, so it doesn't start abruptly.
 - The preview leaves out what's cut, so you hear the video as it will be exported.
+- Retakes you keep go on a layer of their own when you **Send to Final Cut**, so you can decide there. Delete a retake's gap in the timeline to drop it, or choose **Overwrite to Primary Storyline** to use it.
 
 ## Captions
 
@@ -63,6 +64,14 @@ Click **Make Captions** (needs macOS 26). Pane turns your narration into caption
 
 - **Export Video** saves an "(Edited)" copy next to your recording. The original never changes.
 - **Send to Final Cut** opens the video in Final Cut Pro, with your camera on its own layer and a marker at every click.
+
+## Find, rename and clean up videos
+
+Click **Recordings** in Pane's window (⇧⌘L) to see every video with its size.
+
+- **Review** opens it again. Rename it from **⋯** or from the **Name** field in Review.
+- **Move to Trash** removes a video with everything that goes with it. **Keep Only the Edited Copy** frees space on a finished video.
+- **Organize Older Recordings** puts recordings from before folders into folders.
 
 ## Edit an older video
 

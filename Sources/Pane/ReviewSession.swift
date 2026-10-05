@@ -470,6 +470,7 @@ final class ReviewSession: ObservableObject, Identifiable {
         let effects = frameEffects(cameraSeparate: separate).filter { !($0 is CaptionRenderer) }
         let captions = exportCaptions
         let cuts = cuts
+        let setAside = keptRetakes
         let name = sourceURL.deletingPathExtension().lastPathComponent
         let source = separate ? clips.screen : sourceURL
         let folder = finalCutFolder
@@ -482,7 +483,7 @@ final class ReviewSession: ObservableObject, Identifiable {
                 let project = try await FinalCutHandoff.prepare(
                     name: name, screen: source, camera: separate ? clips.camera : nil, findings: findings,
                     effects: effects, clicks: clicks, clickSounds: clickSounds, in: folder, trim: trim,
-                    cuts: cuts, captions: captions
+                    cuts: cuts, setAside: setAside, captions: captions
                 ) { value in
                     Task { @MainActor [weak self] in
                         if case .exporting = self?.exportState { self?.exportState = .exporting(value) }

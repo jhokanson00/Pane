@@ -440,7 +440,7 @@ private struct RetakeLabel: View {
         }
         .font(.caption)
         .foregroundStyle(.secondary)
-        .help(session.retakeState.failureMessage ?? "Sentences you said again. Click one to keep or cut its first try.")
+        .help(session.retakeState.failureMessage ?? "Sentences you said again. Click one to keep or cut its first try. Kept ones go on a layer of their own in Final Cut.")
     }
 }
 

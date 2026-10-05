@@ -24,6 +24,11 @@ public struct FinalCutProject: Sendable {
     /// Frames left out from inside the trim (retakes): the screen becomes one clip per
     /// part kept, back to back, and dragging a clip's end brings a cut part back.
     public var cuts: [Range<Int>] = []
+    /// Frames kept on the timeline but set on a layer of their own (retakes kept for
+    /// deciding in Final Cut): a gap in the main timeline with the screen and camera
+    /// connected above it, in the Retakes roles. Deleting the gap removes the retake and
+    /// closes up; Overwrite to Primary Storyline keeps it.
+    public var setAside: [Range<Int>] = []
     /// Sounds such as the click sound, connected below the screen at their moments.
     public var soundEffects: [SoundEffect] = []
     /// Captions from the narration. Final Cut keeps them as a caption role, where they
@@ -59,8 +64,8 @@ public struct FinalCutProject: Sendable {
         let clipFrames = camera == nil ? frames : min(frames, cameraFrames)
         // The camera and markers inside each screen clip are placed on the files' own
         // timeline, so a trim or cut only moves the clips' starts and shortens them.
-        let segments = keptSegments
-        let total = segments.reduce(0) { $0 + $1.count }
+        let pieces = timelinePieces
+        let total = pieces.reduce(0) { $0 + $1.frames.count }
         var lines = [
             #"<?xml version="1.0" encoding="UTF-8"?>"#,
             "<!DOCTYPE fcpxml>",
@@ -88,22 +93,33 @@ public struct FinalCutProject: Sendable {
             "                <spine>",
         ]
         var offset = 0
-        for (index, kept) in segments.enumerated() {
+        for (index, piece) in pieces.enumerated() {
+            let kept = piece.frames
             let cameraKept = kept.clamped(to: 0..<clipFrames)
             let clipStart = kept.lowerBound == 0 ? "" : #" start="\#(time(kept.lowerBound))""#
-            lines.append(#"                    <asset-clip ref="r2" offset="\#(time(offset))" name="Screen"\#(clipStart) duration="\#(time(kept.count))" tcFormat="NDF"\#(audioTracks > 0 ? #" audioRole="dialogue""# : "")>"#)
-            if camera != nil, !cameraKept.isEmpty {
-                lines.append(#"                        <asset-clip ref="r3" lane="1" offset="\#(time(cameraKept.lowerBound))" name="Camera"\#(cameraKept.lowerBound == 0 ? "" : #" start="\#(time(cameraKept.lowerBound))""#) duration="\#(time(cameraKept.count))"/>"#)
+            func camera(lane: Int, role: String) -> [String] {
+                guard self.camera != nil, !cameraKept.isEmpty else { return [] }
+                return [#"                        <asset-clip ref="r3" lane="\#(lane)" offset="\#(time(cameraKept.lowerBound))" name="Camera"\#(cameraKept.lowerBound == 0 ? "" : #" start="\#(time(cameraKept.lowerBound))""#) duration="\#(time(cameraKept.count))"\#(role)/>"#]
             }
-            lines += soundEffectClips(in: kept)
-            lines += captionLines(lane: camera == nil ? 1 : 2, in: kept, clip: index)
-            for marker in markers {
-                let frame = min(max(Int((marker.time * Double(frameRate)).rounded()), 0), max(frames - 1, 0))
-                // Clicks in the parts left out get no marker.
-                guard kept.contains(frame) else { continue }
-                lines.append(#"                        <marker start="\#(time(frame))" duration="1/\#(frameRate)s" value="\#(escape(marker.label))"/>"#)
+            if piece.setAside {
+                // A gap in the main timeline, on the files' own timeline like a screen clip,
+                // with the retake's screen, camera, sounds, captions and clicks connected to it.
+                let roles = #" videoRole="\#(Self.retakeVideoRole)""# + (audioTracks > 0 ? #" audioRole="\#(Self.retakeAudioRole)""# : "")
+                lines.append(#"                    <gap name="Retake" offset="\#(time(offset))" start="\#(time(kept.lowerBound))" duration="\#(time(kept.count))">"#)
+                lines.append(#"                        <asset-clip ref="r2" lane="1" offset="\#(time(kept.lowerBound))" name="Retake"\#(clipStart) duration="\#(time(kept.count))"\#(roles)/>"#)
+                lines += camera(lane: 2, role: #" videoRole="\#(Self.retakeVideoRole)""#)
+                lines += soundEffectClips(in: kept)
+                lines += captionLines(lane: self.camera == nil ? 2 : 3, in: kept, clip: index)
+                lines += markerLines(in: kept)
+                lines.append("                    </gap>")
+            } else {
+                lines.append(#"                    <asset-clip ref="r2" offset="\#(time(offset))" name="Screen"\#(clipStart) duration="\#(time(kept.count))" tcFormat="NDF"\#(audioTracks > 0 ? #" audioRole="dialogue""# : "")>"#)
+                lines += camera(lane: 1, role: "")
+                lines += soundEffectClips(in: kept)
+                lines += captionLines(lane: self.camera == nil ? 1 : 2, in: kept, clip: index)
+                lines += markerLines(in: kept)
+                lines.append("                    </asset-clip>")
             }
-            lines.append("                    </asset-clip>")
             offset += kept.count
         }
         lines += [
@@ -115,6 +131,39 @@ public struct FinalCutProject: Sendable {
             "",
         ]
         return lines.joined(separator: "\n")
+    }
+
+    /// The roles retakes set aside are in, so the timeline index can hide or show them all.
+    static let retakeVideoRole = "video.Retakes"
+    static let retakeAudioRole = "dialogue.Retakes"
+
+    /// A marker at each click in `kept`, on the files' own timeline. Clicks in the parts
+    /// left out get none.
+    private func markerLines(in kept: Range<Int>) -> [String] {
+        func time(_ frames: Int) -> String { frames == 0 ? "0s" : "\(frames)/\(frameRate)s" }
+        return markers.compactMap { marker in
+            let frame = min(max(Int((marker.time * Double(frameRate)).rounded()), 0), max(frames - 1, 0))
+            guard kept.contains(frame) else { return nil }
+            return #"                        <marker start="\#(time(frame))" duration="1/\#(frameRate)s" value="\#(escape(marker.label))"/>"#
+        }
+    }
+
+    /// The parts on the timeline in order, each either in the main timeline or set aside on
+    /// a layer of its own.
+    var timelinePieces: [(frames: Range<Int>, setAside: Bool)] {
+        var pieces: [(frames: Range<Int>, setAside: Bool)] = []
+        let aside = setAside.sorted { $0.lowerBound < $1.lowerBound }
+        for kept in keptSegments {
+            var start = kept.lowerBound
+            for range in aside where range.upperBound > start && range.lowerBound < kept.upperBound {
+                let low = max(range.lowerBound, start), high = min(range.upperBound, kept.upperBound)
+                if low > start { pieces.append((start..<low, false)) }
+                if high > low { pieces.append((low..<high, true)) }
+                start = max(start, high)
+            }
+            if start < kept.upperBound { pieces.append((start..<kept.upperBound, false)) }
+        }
+        return pieces
     }
 
     /// The frames on the timeline, after the trim.
@@ -183,13 +232,15 @@ public enum FinalCutHandoff {
     ///     trims them, so the cut parts can be brought back in Final Cut.
     ///   - cuts: Parts to leave out from inside the trim (retakes), in seconds; the project
     ///     leaves them out the same way.
+    ///   - setAside: Parts kept but put on a layer of their own (retakes kept, to decide
+    ///     on in Final Cut), in seconds.
     ///   - captions: Added to the project as captions, not drawn into the screen.
     /// - Returns: The project file, to open in Final Cut.
     public static func prepare(
         name: String, screen: URL, camera: URL?, findings: [Finding], effects: [any FrameEffect],
         clicks: [PointerTrack.Click], clickSounds: [PointerTrack.Click] = [], in folder: URL,
-        trim: ClosedRange<Double>? = nil, cuts: [ClosedRange<Double>] = [], captions: Captions? = nil,
-        progress: @escaping @Sendable (Double) -> Void = { _ in }
+        trim: ClosedRange<Double>? = nil, cuts: [ClosedRange<Double>] = [], setAside: [ClosedRange<Double>] = [],
+        captions: Captions? = nil, progress: @escaping @Sendable (Double) -> Void = { _ in }
     ) async throws -> URL {
         let fileManager = FileManager.default
         try fileManager.createDirectory(at: folder, withIntermediateDirectories: true)
@@ -235,9 +286,11 @@ public enum FinalCutHandoff {
                 .map { Trim.frames($0, frameRate: frameRate, totalFrames: frames) },
             soundEffects: try FinalCutProject.SoundEffect.clicks(clickSounds, in: folder)
         )
-        project.cuts = cuts.map { cut in
-            Int((cut.lowerBound * Double(frameRate)).rounded())..<Int((cut.upperBound * Double(frameRate)).rounded())
+        func frameRange(_ range: ClosedRange<Double>) -> Range<Int> {
+            Int((range.lowerBound * Double(frameRate)).rounded())..<Int((range.upperBound * Double(frameRate)).rounded())
         }
+        project.cuts = cuts.map(frameRange)
+        project.setAside = setAside.map(frameRange)
         project.captions = captions
         let projectURL = folder.appendingPathComponent(name).appendingPathExtension("fcpxml")
         try project.xml.write(to: projectURL, atomically: true, encoding: .utf8)

@@ -30,6 +30,17 @@ extension ReviewSession {
         }
     }
 
+    /// The retakes kept, placed like cuts: Send to Final Cut puts each on a layer of its
+    /// own, so it can be decided on there.
+    var keptRetakes: [ClosedRange<Double>] {
+        let kept = retakes.filter { !$0.isCut }.map(\.retake.cut)
+        guard !kept.isEmpty else { return [] }
+        if let audioLevels, let spokenWords {
+            return CutEdges.placed(kept, levels: audioLevels, words: spokenWords, pause: cutPause)
+        }
+        return kept
+    }
+
     /// How much the cuts take out, in seconds (overlaps counted once).
     var cutLength: Double {
         let edit = VideoEdit(cuts: cuts)

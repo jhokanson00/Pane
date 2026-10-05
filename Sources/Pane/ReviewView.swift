@@ -625,7 +625,7 @@ private struct ExportPanel: View {
                     }
                     .controlSize(.large)
                     .help("Opens a Final Cut project with the screen (blurred, with pointer effects), the camera on its "
-                          + "own layer, and a marker at every click")
+                          + "own layer, and a marker at every click. Retakes you keep go on a layer of their own there.")
                 }
                 Text("Saves a new copy with the blur and pointer effects. Your original recording stays unchanged.")
                     .font(.caption)

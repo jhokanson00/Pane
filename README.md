@@ -26,7 +26,7 @@ Everything happens on your Mac: recording, reading text on screen, blurring and
 captions all use Apple's on-device frameworks. Pane never uploads your recordings and
 has no accounts, analytics or tracking. Its only network request is the update check,
 which downloads a small file from this repo's GitHub releases. Recordings are saved to
-`~/Movies/Pane`.
+`~/Movies/Pane`, one folder per video.
 
 **Permissions.** On first use macOS asks for **Screen & System Audio Recording**,
 **Camera** and **Microphone**. After granting Screen Recording, quit and reopen Pane.
@@ -62,6 +62,28 @@ of a second when a left-out app opens a window. So a "Never record" app opened a
 recording starts is now left out too, after its first few frames
 (`DistractionGuard`, rules in `PaneKit/CaptureExclusion.swift`). Window
 recordings only ever show their one window, so they need neither.
+
+## Recordings
+
+Each video gets its own folder in `~/Movies/Pane`, named after it and the day it was
+made: type a **Name** above Start Recording (or start a teleprompter script with a line
+like `# Share a Project`), and the recording is saved as
+`Share a Project 2026-10-05/Share a Project 2026-10-05.mp4`. Another recording with the
+same name that day becomes "Take 2". Without a name it's "Untitled 2026-10-05 09.19".
+The edited copy, its captions, the Final Cut folder and the separate screen and camera
+clips ("Clips for Final Cut") all go in the same folder, so moving one folder to the
+Trash removes everything that belongs to a video.
+
+**Recordings** (in the main window, or Window ▸ Recordings, ⇧⌘L) lists every video
+newest first with a thumbnail, its date, length and size, what it has (edited copy,
+captions, Final Cut, camera clips) and the total. **Review** opens it again without
+scanning; **Rename…** renames its folder and files (an open Review window follows, and
+Review has a Name field that does the same); **Move to Trash…** and **Keep Only the
+Edited Copy…** use the Trash, so they can be undone. **Organize Older Recordings…**
+moves recordings from before folders into folders of their own, with their clips from
+Application Support; Final Cut folders stay where they are, since projects already in
+Final Cut point to them. The logic is in `PaneKit/VideoLibrary.swift`;
+`pane-tool library` lists what the window shows.
 
 ## Auto-blur
 
@@ -214,6 +236,14 @@ leave out what was said in them. **Send to Final Cut** puts one screen clip on t
 timeline per kept part, so a cut can be brought back by dragging a clip's end. Cuts
 work together with the trim.
 
+Retakes you keep are put on a layer of their own in Final Cut, to decide on there: the
+main timeline has a gap where the first try was, with its screen (lane 1) and camera
+(lane 2) connected above it in the **Retakes** roles (`video.Retakes`,
+`dialogue.Retakes`), along with its click sounds, captions and click markers. Select the
+gap and press Delete to drop the retake and close up the timeline; select the retake and
+choose Overwrite to Primary Storyline to use it. The roles turn every retake off or on at
+once in the timeline index.
+
 ## Captions
 
 **Make Captions** in the review window turns your narration (the microphone track) into
@@ -279,6 +309,7 @@ swift run pane-tool trim "<recording>.mp4" build/test/trim.mp4 3 72  # export on
 swift run pane-tool click-demo build/test/clicks.mp4 [--narration]  # the sample with click sounds
 swift run pane-tool click-check "<recording>.mp4" "<export>.mp4"  # click timing, narration level, durations
 swift run pane-tool captions "<recording>.mp4" [burned.mp4]   # captions as SRT; optionally burned into a copy
+swift run pane-tool library                    # what the Recordings window lists, with sizes
 swift run pane-tool follow "<recording>.mp4" script.txt  # how far behind the speaker the teleprompter stays
 swift run pane-tool retakes "<recording>.mp4" script.txt [out.mp4] [--pause long]  # the retakes Review would cut, and a copy without them
 swift test
@@ -307,6 +338,8 @@ swift test
 | `Sources/PaneKit/ScriptFollower.swift` | Follows spoken words through the script |
 | `Sources/PaneKit/RetakeFinder.swift` | Finds sentences said again |
 | `Sources/PaneKit/CutEdges.swift` | Places cuts in the quiet between words; fades at joins |
+| `Sources/PaneKit/VideoLibrary.swift` | One folder per video: names, listing, renaming, organizing |
+| `Sources/Pane/RecordingsView.swift` | The Recordings window |
 | `Sources/PaneKit/VideoEdit.swift` | Trim plus cuts: what's kept, and time in the export |
 
 You can also open `Package.swift` in Xcode to browse and edit the code.
