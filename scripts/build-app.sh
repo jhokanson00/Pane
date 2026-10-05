@@ -31,12 +31,13 @@ SPARKLE="$APP/Contents/Frameworks/Sparkle.framework"
 cp -R "$BIN_DIR/Sparkle.framework" "$SPARKLE"
 rm -rf "$SPARKLE/Versions/B/XPCServices" "$SPARKLE/XPCServices"
 
-# swift build also points the app at the Xcode toolchain's libraries, searched before
-# Contents/Frameworks. Pane needs nothing from there (the Swift runtime is part of
-# macOS), so look for Sparkle only inside the app.
+# swift build also points the app at other places to look for libraries, the Xcode
+# toolchain's among them, searched before Contents/Frameworks. Pane needs nothing from
+# them (the Swift runtime is part of macOS), so look for Sparkle only inside the app.
 while read -r RPATH; do
   install_name_tool -delete_rpath "$RPATH" "$APP/Contents/MacOS/Pane"
-done < <(otool -l "$APP/Contents/MacOS/Pane" | awk '$1 == "path" && $2 ~ /\.xctoolchain\// { print $2 }')
+done < <(otool -l "$APP/Contents/MacOS/Pane" |
+  awk '$1 == "path" && $2 != "@executable_path/../Frameworks" && $2 != "/usr/lib/swift" { print $2 }' | sort -u)
 
 # Signing identity: PANE_SIGN_IDENTITY if set, else a Developer ID, else a local
 # identity so macOS remembers permissions across rebuilds, else ad-hoc.

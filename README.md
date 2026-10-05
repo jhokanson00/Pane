@@ -59,11 +59,13 @@ teleprompter script, and the blur layers (with the text they cover). They go wit
 file when it's copied, zipped or AirDropped. The "(Edited)" copy and the Final Cut
 screen file are new files without them, and with only their export date as metadata.
 
-**What a blur can and can't do.** Blurs mix blurring, pixelating and grain so text
-can't be read back by eye, and Pane keeps them on the text as it moves. Auto-blur finds
-text by reading the screen, so it can miss some (tiny or unusual type, text the pointer
-covers for a long time); always watch the preview before you share, and drag a blur's
-ends or draw a box where needed. A blur's width hints at how long the text is, so if a
+**What a blur can and can't do.** Nothing under a blur reaches the video: its color
+comes from just outside it and its frosted texture from noise, so there's nothing to
+read back or to compare guesses against, and Pane keeps it on the text as it moves,
+including while the text is being typed. Auto-blur finds text by reading the screen, so
+it can miss some (tiny or unusual type, text the pointer covers for a long time);
+always watch the preview before you share, and drag a blur's ends or draw a box where
+needed. A blur's width hints at how long the text is, so if a
 password or key ever showed on screen, change it anyway. In Final Cut the camera is its
 own, unblurred layer, and the screen behind it wasn't scanned.
 
@@ -108,7 +110,7 @@ like `# Share a Project`), and the recording is saved as
 `Share a Project 2026-10-05/Share a Project 2026-10-05.mp4`. Another recording with the
 same name that day becomes "Take 2". Without a name it's "Untitled 2026-10-05 09.19".
 The edited copy, its captions, the Final Cut folder and the separate screen and camera
-clips ("Clips for Final Cut") all go in the same folder, so moving one folder to the
+clips ("Clips for Final Cut (not blurred)") all go in the same folder, so moving one folder to the
 Trash removes everything that belongs to a video.
 
 **Recording Management** (a link in the main window and in Review, or Window ▸ Recording
@@ -132,9 +134,9 @@ When a recording stops, Pane reads its on-screen text about 3 times a second (Ap
 Vision framework, on-device) and finds emails, phone numbers, keys, tokens and passwords,
 card and ID numbers, and words from your own list. It then follows each one on every
 frame, so the blur stays on the text as you scroll, including just before it was first
-read and as it leaves the screen. The blur snaps to the real edges of the text so
-neighboring words stay readable, and gives it a frosted-glass look that can't be read
-back. The review window previews exactly what the export will look like.
+read, while it's being typed, and as it leaves the screen. The blur snaps to the real
+edges of the text so neighboring words stay readable, and gives it a frosted-glass look
+made only from the colors around it, so nothing behind it can be read back. The review window previews exactly what the export will look like.
 
 The review window shows every item as a **blur layer** you can turn on or off. You can
 add your own layers: **Blur Text** (click any word to blur it everywhere it appears) or
@@ -326,19 +328,25 @@ scripts/release.sh 1.1.0 --publish   # tag, push main and publish the GitHub rel
 
 The script sets the version in `Resources/Info.plist` with a build number above the live
 one (committed when the tree is clean), builds a universal app with the Developer ID
-certificate in the keychain and the hardened runtime, checks its team and entitlements,
-notarizes and staples the app and the `.dmg`, and signs the `.dmg` for Sparkle with the
-EdDSA key in the keychain (`generate_keys --account Pane`; its public half is
-`SUPublicEDKey`), checking that signature against `SUPublicEDKey`. The notes go inside
-`appcast.xml`, which is then signed with the same key: Pane only accepts a signed feed.
-Each release carries its own `appcast.xml`, which the app reads from
-`releases/latest/download/appcast.xml`.
+certificate in the keychain and the hardened runtime, notarizes and staples the app and
+the `.dmg`, and signs the `.dmg` for Sparkle with the EdDSA key in the keychain
+(`generate_keys --account Pane`). The notes go inside `appcast.xml`, which is then
+signed with the same key: Pane only accepts a signed feed. Each release carries its own
+`appcast.xml`, which the app reads from `releases/latest/download/appcast.xml`.
+
+Before anything goes out, the script checks it the way users will get it: both
+signatures against the public key pinned in `scripts/sparkle-public-key.txt` (also
+`SUPublicEDKey`), without the keychain (`scripts/verify-signature.swift`); the feed's
+XML; and the app inside the `.dmg`: team, hardened runtime, camera and microphone as
+its only entitlements, no library paths outside the app, the feed URL and update
+settings, notarization. Changing the key needs a new `SUFeedURL` as well, since a feed
+carries one signature and copies of Pane with the old key would stop updating.
 
 `--publish` needs a clean `main` that includes `origin/main`, and reuses the build in
 `build/release` if it was made from the same commit. It tags that commit, pushes, uploads
 a draft release, checks that GitHub holds exactly the files built, then publishes it.
-Without a Developer ID it makes a test build and won't publish. Notarizing needs a stored
-profile, made once:
+Without a Developer ID it makes a test `.dmg` only, signed for nothing, and won't
+publish. Notarizing needs a stored profile, made once:
 
 ```bash
 xcrun notarytool store-credentials pane-notary --apple-id <your Apple ID> --team-id <team ID>
