@@ -32,6 +32,7 @@ struct MainView: View {
                         .buttonStyle(.link)
                         .help("Scan any video for sensitive info. You can also drop a video on Pane's Dock icon.")
                 }
+                VideoNameField()
                 RecordButton()
             }
             .padding(20)
@@ -126,6 +127,30 @@ private struct CameraCircle: View {
 }
 
 // MARK: - Controls
+
+/// What the next recording is called, and the folder it will go in.
+private struct VideoNameField: View {
+    @EnvironmentObject private var model: RecorderModel
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack {
+                Text("Name")
+                TextField("Untitled", text: $model.videoTitle)
+                    .textFieldStyle(.roundedBorder)
+                    .disabled(model.state != .idle)
+            }
+            Text("Saves as \u{201C}\(VideoLibrary.uniqueName(title: model.videoTitle, date: Date(), in: RecorderModel.recordingsFolder))\u{201D} "
+                 + "in its own folder in Movies \u{25B8} Pane.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .truncationMode(.middle)
+        }
+        .help("Another recording with the same name today becomes Take 2. A script that starts with "
+              + "a line like \u{201C}# Share a Project\u{201D} fills this in.")
+    }
+}
 
 private struct RecordButton: View {
     @EnvironmentObject private var model: RecorderModel

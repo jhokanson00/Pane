@@ -285,6 +285,21 @@ case "finalcut":
 case "zoom-export":
     try await ZoomTool.run(args)
 
+case "library":
+    // What the Recordings window lists: each video, its parts and its size. Changes nothing.
+    let movies = FileManager.default.urls(for: .moviesDirectory, in: .userDomainMask)[0].appendingPathComponent("Pane")
+    let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+        .appendingPathComponent("Pane/Clips")
+    let root = args.count > 1 ? URL(fileURLWithPath: args[1]) : movies
+    let items = VideoLibrary.items(in: root, legacyClips: support)
+    let bytes = ByteCountFormatter()
+    for item in items {
+        let parts = [item.video.map { _ in "video" }, item.edited.map { _ in "edited" }, item.captions.map { _ in "captions" },
+                     item.finalCut.map { _ in "final cut" }, item.clips.map { _ in "clips" }].compactMap { $0 }
+        print("\(item.kind)\t\(bytes.string(fromByteCount: item.size))\t\(item.name)  [\(parts.joined(separator: ", "))]")
+    }
+    print("\(items.count) items, \(bytes.string(fromByteCount: items.reduce(0) { $0 + $1.size }))")
+
 case "follow":
     try await FollowTool.run(args)
 

@@ -25,6 +25,13 @@ final class ScriptFollowerTests: XCTestCase {
         XCTAssertEqual(PrompterScript.key("Two,"), "2")
     }
 
+    func testHeadingsArentReadAndTheFirstNamesTheVideo() {
+        let script = PrompterScript("# Share a Project\n\nHi there.\n## Part two\nBye now.\n#1 tip, said aloud.")
+        XCTAssertEqual(script.words.map(\.text), ["Hi", "there.", "Bye", "now.", "#1", "tip,", "said", "aloud."])
+        XCTAssertEqual(PrompterScript.title(in: "Intro line\n#  Share a Project \n# Later"), "Share a Project")
+        XCTAssertNil(PrompterScript.title(in: "No title here.\n#hashtag"))
+    }
+
     func testFollowsWordByWord() {
         var follower = ScriptFollower(script: PrompterScript(text))
         var heard: [String] = []

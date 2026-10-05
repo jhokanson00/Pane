@@ -7,7 +7,8 @@ import Foundation
 ///     Card numbers and ID numbers are blurred too.
 ///
 /// A bracketed part is a cue, shown but not read; it can sit alone on a line or inside one.
-/// Blank lines only space the script out.
+/// Blank lines only space the script out. Markdown headings ("# Share a Project") aren't
+/// read either; the first one names the video.
 public struct PrompterScript: Sendable, Equatable {
     public struct Word: Sendable, Equatable {
         /// As written, with its punctuation.
@@ -39,7 +40,7 @@ public struct PrompterScript: Sendable, Equatable {
     public init(_ text: String) {
         for raw in text.components(separatedBy: .newlines) {
             let source = raw.trimmingCharacters(in: .whitespaces)
-            guard !source.isEmpty else { continue }
+            guard !source.isEmpty, !Self.isHeading(source) else { continue }
             let line = lines.count
             let firstWord = words.count, firstCue = cues.count
             var rest = Substring(source)
@@ -60,6 +61,23 @@ public struct PrompterScript: Sendable, Equatable {
             }
             lines.append(Line(words: firstWord..<words.count, cues: firstCue..<cues.count))
         }
+    }
+
+    /// The script's title: its first "# " heading, if it has one.
+    public static func title(in text: String) -> String? {
+        for raw in text.components(separatedBy: .newlines) {
+            let line = raw.trimmingCharacters(in: .whitespaces)
+            guard line.hasPrefix("# ") else { continue }
+            let title = line.dropFirst(2).trimmingCharacters(in: .whitespaces)
+            if !title.isEmpty { return title }
+        }
+        return nil
+    }
+
+    /// "# Title", "## Part two": Markdown headings, which aren't said.
+    static func isHeading(_ line: String) -> Bool {
+        let marks = line.prefix { $0 == "#" }
+        return !marks.isEmpty && marks.count <= 6 && line.dropFirst(marks.count).first == " "
     }
 
     /// Where each sentence starts, as word indices: after a word ending in . ! or ?, and at

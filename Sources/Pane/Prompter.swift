@@ -40,6 +40,10 @@ final class PrompterController: ObservableObject {
     @Published var scriptText: String {
         didSet {
             UserDefaults.standard.set(scriptText, forKey: Keys.script)
+            // A new "# Title" names the next video.
+            if let title = PrompterScript.title(in: scriptText), title != PrompterScript.title(in: oldValue) {
+                RecorderModel.shared.videoTitle = title
+            }
             script = PrompterScript(scriptText)
             // Edited while showing (rehearsing): keep the place, as near as the new text allows.
             follower = ScriptFollower(script: script)

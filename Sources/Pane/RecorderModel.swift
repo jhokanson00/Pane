@@ -83,6 +83,11 @@ final class RecorderModel: ObservableObject {
     /// With the camera on, also keep the screen and the camera as separate clips, so
     /// Send to Final Cut can put the camera on its own layer.
     @Published var finalCutClips: Bool { didSet { save(finalCutClips, "finalCutClips") } }
+    /// What the next recording is called, such as "Share a Project". Empty makes it
+    /// "Untitled" with the time. Kept after recording, so another take gets "Take 2".
+    @Published var videoTitle: String { didSet { save(videoTitle, "videoTitle") } }
+    /// The folder the recording in progress goes into, so the Recordings list leaves it out.
+    @Published private(set) var recordingFolder: URL?
     /// Log keyboard shortcuts while recording, shown as badges in exports. Needs Input
     /// Monitoring, which is asked for only when this is turned on.
     @Published var showShortcuts: Bool { didSet { save(showShortcuts, "showShortcuts"); showShortcutsChanged() } }
@@ -120,13 +125,18 @@ final class RecorderModel: ObservableObject {
         return movies.appendingPathComponent("Pane", isDirectory: true)
     }()
 
-    /// Where a recording's separate screen and camera clips are kept (see SeparateClips).
+    /// Where a recording's separate screen and camera clips are kept (see SeparateClips):
+    /// in its folder, or for recordings from before folders, in Application Support.
     static func separateClips(for recording: URL) -> SeparateClips.Files {
-        let folder = supportFolder.appendingPathComponent("Clips", isDirectory: true)
-            .appendingPathComponent(recording.deletingPathExtension().lastPathComponent, isDirectory: true)
+        let folder = VideoLibrary.isInFolder(recording, root: recordingsFolder)
+            ? recording.deletingLastPathComponent().appendingPathComponent(VideoLibrary.clipsFolderName, isDirectory: true)
+            : legacyClipsFolder.appendingPathComponent(recording.deletingPathExtension().lastPathComponent, isDirectory: true)
         return SeparateClips.Files(screen: folder.appendingPathComponent("Screen.mp4"),
                                    camera: folder.appendingPathComponent("Camera.mov"))
     }
+
+    /// Where clips were kept before each video had its own folder.
+    static var legacyClipsFolder: URL { supportFolder.appendingPathComponent("Clips", isDirectory: true) }
 
     static let supportFolder: URL = {
         let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
@@ -150,6 +160,7 @@ final class RecorderModel: ObservableObject {
         autoBlur = defaults.bool(forKey: "autoScan")
         pointerEffects = defaults.bool(forKey: "pointerEffects")
         finalCutClips = defaults.bool(forKey: "finalCutClips")
+        videoTitle = defaults.string(forKey: "videoTitle") ?? ""
         showShortcuts = defaults.bool(forKey: "showShortcuts")
         detectedKinds = Set((defaults.stringArray(forKey: "detectedKinds") ?? []).compactMap(SensitiveKind.init))
         customWords = defaults.stringArray(forKey: "customWords") ?? []
@@ -242,10 +253,14 @@ final class RecorderModel: ObservableObject {
         }
         guard finished, state == .countingDown else { return }
 
+        // Each video in its own folder, named after it (see VideoLibrary).
+        let name = VideoLibrary.uniqueName(title: videoTitle, date: Date(), in: Self.recordingsFolder)
+        let folder = Self.recordingsFolder.appendingPathComponent(name, isDirectory: true)
         do {
             let filter = target.filter
-            try FileManager.default.createDirectory(at: Self.recordingsFolder, withIntermediateDirectories: true)
-            let outputURL = Self.recordingsFolder.appendingPathComponent(Self.newFileName())
+            try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+            recordingFolder = folder
+            let outputURL = folder.appendingPathComponent(name + ".mp4")
             let recorder = ScreenRecorder(outputURL: outputURL, camera: cameraEnabled ? camera : nil)
             recorder.onUnexpectedStop = { [weak self] error in
                 Task { await self?.stopRecording(reason: error) }
@@ -273,6 +288,10 @@ final class RecorderModel: ObservableObject {
             if usesPrompter { prompter.resume() }
         } catch {
             problem = .other("Couldn't start recording: \(error.localizedDescription)")
+            // Nothing was recorded: don't leave an empty folder behind.
+            if (try? FileManager.default.contentsOfDirectory(atPath: folder.path))?.isEmpty == true {
+                try? FileManager.default.removeItem(at: folder)
+            }
             resetAfterRecording()
         }
     }
@@ -497,6 +516,7 @@ final class RecorderModel: ObservableObject {
 
     private func resetAfterRecording() {
         recordedScript = nil
+        recordingFolder = nil
         if !PrompterController.shared.isRehearsing { PrompterController.shared.end() }
         timer?.invalidate()
         timer = nil
@@ -585,12 +605,6 @@ final class RecorderModel: ObservableObject {
     private var selectedScreen: NSScreen? {
         let id = selectedDisplayID ?? CGMainDisplayID()
         return NSScreen.screens.first { $0.displayID == id } ?? NSScreen.main
-    }
-
-    private static func newFileName() -> String {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "yyyy-MM-dd 'at' HH.mm.ss"
-        return "Pane Recording \(formatter.string(from: Date())).mp4"
     }
 
     // MARK: - Camera
