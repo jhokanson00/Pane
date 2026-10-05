@@ -44,6 +44,13 @@ final class VideoLibraryTests: XCTestCase {
         XCTAssertEqual(VideoLibrary.title(of: "Share a Project 2026-10-05 Take 2"), "Share a Project")
         XCTAssertEqual(VideoLibrary.title(of: "Untitled 2026-10-05 09.19"), "")
         XCTAssertEqual(VideoLibrary.title(of: "Something else"), "Something else")
+        XCTAssertEqual(VideoLibrary.title(of: "Pane Recording 2026-10-02 at 12.11.29"), "")
+        XCTAssertEqual(VideoLibrary.take(of: "Share a Project 2026-10-05 Take 2"), 2)
+        XCTAssertEqual(VideoLibrary.take(of: "Share a Project 2026-10-05"), 1)
+        let old = URL(fileURLWithPath: "/M/Untitled 2026-10-05 09.19"), new = URL(fileURLWithPath: "/M/Demo 2026-10-05")
+        XCTAssertEqual(VideoLibrary.renamed(old.appendingPathComponent("Untitled 2026-10-05 09.19 (Edited).mp4"), from: old, to: new)?.path,
+                       "/M/Demo 2026-10-05/Demo 2026-10-05 (Edited).mp4")
+        XCTAssertNil(VideoLibrary.renamed(URL(fileURLWithPath: "/M/other.mp4"), from: old, to: new))
     }
 
     func testANameAlreadyTakenGetsTheNextTake() throws {
@@ -89,8 +96,10 @@ final class VideoLibraryTests: XCTestCase {
         try make("Veil Recording 2026-10-02 at 12.11.50.mp4")
         try make("Veil Recording 2026-10-02 at 12.11.50 (Blurred).mp4")
 
-        XCTAssertEqual(try VideoLibrary.organize(root, legacyClips: clips), 2)
+        let moved = try VideoLibrary.organize(root, legacyClips: clips)
         let first = "Untitled 2026-10-02 12.11"
+        XCTAssertEqual(moved[root.appendingPathComponent("Pane Recording 2026-10-02 at 12.11.29.mp4").standardizedFileURL]?
+            .lastPathComponent, "\(first).mp4")
         XCTAssertTrue(exists("\(first)/\(first).mp4"))
         XCTAssertTrue(exists("\(first)/\(first) (Edited).mp4"))
         XCTAssertTrue(exists("\(first)/\(first) (Edited).srt"))

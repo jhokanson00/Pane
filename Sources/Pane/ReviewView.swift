@@ -599,6 +599,9 @@ private struct ExportPanel: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
+            if VideoLibrary.isInFolder(session.sourceURL, root: RecorderModel.recordingsFolder) {
+                VideoNameRow(session: session)
+            }
             CaptionsSection(session: session)
             switch session.exportState {
             case .idle, .failed:
@@ -688,5 +691,41 @@ extension SensitiveKind {
         case .customWord: .teal
         case .manual: .gray
         }
+    }
+}
+
+/// The video's name, renaming its folder and files when it's changed.
+private struct VideoNameRow: View {
+    @ObservedObject var session: ReviewSession
+    @State private var title = ""
+    @FocusState private var editing: Bool
+
+    var body: some View {
+        HStack {
+            Text("Name")
+            TextField(VideoLibrary.untitled, text: $title)
+                .textFieldStyle(.roundedBorder)
+                .focused($editing)
+                .onSubmit(rename)
+                .disabled(session.isBusy)
+        }
+        .help("Renames this video's folder and its files. Press Return to rename.")
+        .onAppear(perform: reset)
+        .onChange(of: session.sourceURL) { reset() }
+        .onChange(of: editing) { if !editing { rename() } }
+    }
+
+    private var current: String {
+        VideoLibrary.title(of: session.sourceURL.deletingLastPathComponent().lastPathComponent)
+    }
+
+    private func reset() { title = current }
+
+    private func rename() {
+        guard VideoLibrary.cleaned(title) != current else { return reset() }
+        if let problem = RecordingsLibrary.shared.rename(videoAt: session.sourceURL, to: title) {
+            session.notice = problem
+        }
+        reset()
     }
 }

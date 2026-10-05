@@ -42,11 +42,18 @@ public enum VideoLibrary {
         }
     }
 
-    /// The title in a video's name, without its date, time and take ("" when untitled).
+    /// The title in a video's name, without its date, time and take ("" when untitled, as
+    /// recordings from before names are).
     public static func title(of name: String) -> String {
+        if name.firstMatch(of: legacyPattern) != nil { return "" }
         guard let match = name.firstMatch(of: namePattern) else { return name }
         let title = String(match.1)
         return title == untitled ? "" : title
+    }
+
+    /// The take in a name: 2 for "… Take 2", otherwise 1.
+    public static func take(of name: String) -> Int {
+        name.firstMatch(of: namePattern)?.4.flatMap { Int($0) } ?? 1
     }
 
     /// The day (and for untitled videos the time) in a name, either kind.
@@ -130,10 +137,10 @@ public enum VideoLibrary {
         var items: [Item] = []
         // Paths, since the same file can come as differently spelled URLs.
         var claimed = Set<String>()
-        let skipped = skipping?.standardizedFileURL
+        let skipped = skipping?.standardizedFileURL.path
 
         // Videos in their own folders.
-        for entry in entries where isDirectory(entry) && entry.standardizedFileURL != skipped {
+        for entry in entries where isDirectory(entry) && entry.standardizedFileURL.path != skipped {
             let name = entry.lastPathComponent
             let video = entry.appendingPathComponent(name + ".mp4")
             let edited = entry.appendingPathComponent(name + " (Edited).mp4")
@@ -170,7 +177,7 @@ public enum VideoLibrary {
         }
 
         // Everything else.
-        for entry in entries where !claimed.contains(entry.standardizedFileURL.path) && entry.standardizedFileURL != skipped {
+        for entry in entries where !claimed.contains(entry.standardizedFileURL.path) && entry.standardizedFileURL.path != skipped {
             items.append(Item(kind: .other, name: entry.lastPathComponent, files: [entry],
                               date: created(entry), size: size(of: entry)))
         }
@@ -202,10 +209,14 @@ public enum VideoLibrary {
     /// Gathers loose recordings into folders, named the new way ("Untitled 2026-10-02
     /// 12.11" for "Pane Recording 2026-10-02 at 12.11.29"). Final Cut folders stay where
     /// they are, since projects already in Final Cut point to them.
-    /// - Returns: How many recordings were moved.
+    /// - Returns: Where each file moved, old to new.
     @discardableResult
-    public static func organize(_ root: URL, legacyClips: URL? = nil) throws -> Int {
-        var moved = 0
+    public static func organize(_ root: URL, legacyClips: URL? = nil) throws -> [URL: URL] {
+        var moved: [URL: URL] = [:]
+        func move(_ from: URL, to: URL) throws {
+            try FileManager.default.moveItem(at: from, to: to)
+            moved[from.standardizedFileURL] = to
+        }
         // Oldest first, so a second recording in the same minute becomes Take 2.
         for item in items(in: root, legacyClips: legacyClips).reversed() where item.kind == .loose {
             let made = date(in: item.name)
@@ -216,7 +227,6 @@ public enum VideoLibrary {
             if let edited = item.edited { try move(edited, to: folder.appendingPathComponent(name + " (Edited).mp4")) }
             if let captions = item.captions { try move(captions, to: folder.appendingPathComponent(name + " (Edited).srt")) }
             if let clips = item.clips { try move(clips, to: folder.appendingPathComponent(clipsFolderName)) }
-            moved += 1
         }
         return moved
     }
@@ -240,6 +250,16 @@ public enum VideoLibrary {
         return renamed
     }
 
+    /// Where a file in a video's folder is after `rename` moved the folder from `old` to
+    /// `new`, or nil if it wasn't in it.
+    public static func renamed(_ url: URL, from old: URL, to new: URL) -> URL? {
+        guard url.deletingLastPathComponent().standardizedFileURL.path == old.standardizedFileURL.path else { return nil }
+        let file = url.lastPathComponent, oldName = old.lastPathComponent
+        let rest = file.hasPrefix(oldName) ? file.dropFirst(oldName.count) : ""
+        let renamed = file.hasPrefix(oldName) && (rest.hasPrefix(".") || rest.hasPrefix(" (")) ? new.lastPathComponent + rest : file
+        return new.appendingPathComponent(renamed)
+    }
+
     /// The recording itself in a video folder.
     public static func video(in folder: URL) -> URL {
         folder.appendingPathComponent(folder.lastPathComponent + ".mp4")
@@ -248,15 +268,11 @@ public enum VideoLibrary {
     /// Whether `url` is a recording in its own folder in `root`.
     public static func isInFolder(_ url: URL, root: URL) -> Bool {
         let folder = url.deletingLastPathComponent()
-        return folder.deletingLastPathComponent().standardizedFileURL == root.standardizedFileURL
+        return folder.deletingLastPathComponent().standardizedFileURL.path == root.standardizedFileURL.path
             && url.deletingPathExtension().lastPathComponent == folder.lastPathComponent
     }
 
     // MARK: - Files
-
-    private static func move(_ from: URL, to: URL) throws {
-        try FileManager.default.moveItem(at: from, to: to)
-    }
 
     private static func exists(_ url: URL) -> Bool { FileManager.default.fileExists(atPath: url.path) }
     private static func existing(_ url: URL) -> URL? { exists(url) ? url : nil }

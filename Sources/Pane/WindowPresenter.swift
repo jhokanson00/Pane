@@ -1,4 +1,5 @@
 import AppKit
+import Combine
 import SwiftUI
 
 @MainActor
@@ -39,11 +40,29 @@ enum WindowPresenter {
     }
 
     private static var reviewWindows: [ReviewSession.ID: NSWindow] = [:]
+    private static var reviewSessions: [ReviewSession.ID: ReviewSession] = [:]
+    private static var reviewTitles: [ReviewSession.ID: AnyCancellable] = [:]
+    private static var recordingsWindow: NSWindow?
+
+    /// The review windows open now.
+    static var openReviews: [ReviewSession] { Array(reviewSessions.values) }
+
+    /// Closes the review windows showing any of `files` (or something inside them).
+    static func closeReviews(showing files: [URL]) {
+        let paths = files.map(\.standardizedFileURL.path)
+        for session in openReviews where paths.contains(where: { session.sourceURL.standardizedFileURL.path.hasPrefix($0) }) {
+            reviewWindows[session.id]?.close()
+            session.close()
+        }
+    }
 
     static func showReview(_ session: ReviewSession) {
         if reviewWindows[session.id] == nil {
             let window = NSWindow(contentViewController: NSHostingController(rootView: ReviewView(session: session)))
-            window.title = "Review – \(session.sourceURL.deletingPathExtension().lastPathComponent)"
+            // Follows the video's name when it's renamed.
+            reviewTitles[session.id] = session.$sourceURL.sink { url in
+                window.title = "Review – \(url.deletingPathExtension().lastPathComponent)"
+            }
             window.styleMask = [.titled, .closable, .miniaturizable, .resizable]
             window.setContentSize(NSSize(width: 1180, height: 720))
             window.isReleasedWhenClosed = false
@@ -55,12 +74,34 @@ enum WindowPresenter {
                 MainActor.assumeIsolated {
                     session.player.pause()
                     reviewWindows[id] = nil
+                    reviewSessions[id] = nil
+                    reviewTitles[id] = nil
                 }
             }
             reviewWindows[id] = window
+            reviewSessions[id] = session
         }
         NSApp.activate()
         reviewWindows[session.id]?.makeKeyAndOrderFront(nil)
+    }
+
+    /// Every recording, with its size, to review, rename or move to the Trash.
+    static func showRecordings() {
+        if recordingsWindow == nil {
+            let window = NSWindow(contentViewController: NSHostingController(
+                rootView: RecordingsView().environmentObject(RecorderModel.shared)
+            ))
+            window.title = "Recordings"
+            window.styleMask = [.titled, .closable, .miniaturizable, .resizable]
+            window.setContentSize(NSSize(width: 720, height: 560))
+            window.isReleasedWhenClosed = false
+            window.center()
+            window.setFrameAutosaveName("PaneRecordings")
+            recordingsWindow = window
+        }
+        NSApp.activate()
+        recordingsWindow?.makeKeyAndOrderFront(nil)
+        RecordingsLibrary.shared.refresh()
     }
 
     /// The how-to guide, from Help ▸ Pane Help or the main window.

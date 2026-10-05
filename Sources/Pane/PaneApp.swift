@@ -24,6 +24,11 @@ struct PaneApp: App {
             CommandGroup(after: .appInfo) {
                 Button("Check for Updates…") { Support.checkForUpdates() }
             }
+            CommandGroup(before: .windowList) {
+                Button("Recordings") { WindowPresenter.showRecordings() }
+                    .keyboardShortcut("l", modifiers: [.command, .shift])
+                Divider()
+            }
             // Replaces macOS's "Help isn't available for Pane".
             CommandGroup(replacing: .help) {
                 Button("Pane Help") { WindowPresenter.showHelp() }

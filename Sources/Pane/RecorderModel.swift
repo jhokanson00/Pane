@@ -398,6 +398,50 @@ final class RecorderModel: ObservableObject {
         }
     }
 
+    /// Opens a video from the Recordings window in Review, without scanning it: its
+    /// window if it's open, or a new one. The Scan button is there if it's wanted.
+    func openReview(of url: URL) {
+        if let open = WindowPresenter.openReviews.first(where: { $0.sourceURL == url }) {
+            WindowPresenter.showReview(open)
+            return
+        }
+        guard state == .idle else { return }
+        scanTask?.cancel()
+        scanTask = nil
+        reviewSession = nil
+        lastRecordingURL = url
+        scanState = .idle
+        reviewLastRecording()
+    }
+
+    /// Files moved (renamed or organized): follow them.
+    func filesMoved(_ moved: (URL) -> URL?) {
+        if let url = lastRecordingURL, let new = moved(url) {
+            lastRecordingURL = new
+            if case .exported(let edited) = scanState, let newEdited = moved(edited) { scanState = .exported(newEdited) }
+        }
+        for session in WindowPresenter.openReviews {
+            if let new = moved(session.sourceURL) { session.moved(to: new) }
+        }
+    }
+
+    /// A recording went to the Trash: stop offering it.
+    func recordingRemoved(_ url: URL) {
+        guard lastRecordingURL == url else { return }
+        scanTask?.cancel()
+        scanTask = nil
+        lastRecordingURL = nil
+        reviewSession = nil
+        scanState = .idle
+    }
+
+    /// Whether `url`'s files are in use: being scanned, or in a review window that's
+    /// exporting or listening.
+    func isBusy(_ url: URL) -> Bool {
+        (scanTask != nil && lastRecordingURL == url)
+            || WindowPresenter.openReviews.contains { $0.sourceURL == url && $0.isBusy }
+    }
+
     /// Reviews any video, not just one Pane recorded, scanning it first if Auto-blur is on.
     func review(videoAt url: URL) {
         guard state == .idle else { return }

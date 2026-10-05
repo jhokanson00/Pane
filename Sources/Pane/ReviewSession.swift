@@ -29,7 +29,8 @@ final class ReviewSession: ObservableObject, Identifiable {
     }
 
     let id = UUID()
-    let sourceURL: URL
+    /// The video. It changes when the video is renamed (see `moved(to:)`).
+    @Published private(set) var sourceURL: URL
     let player: AVPlayer
     let videoSize: CGSize
     let duration: Double
@@ -177,6 +178,15 @@ final class ReviewSession: ObservableObject, Identifiable {
         previewTask?.cancel()
     }
 
+    /// Exporting, making captions or finding retakes: the video's files can't be moved now.
+    var isBusy: Bool { exportTask != nil || captionTask != nil || retakeTask != nil }
+
+    /// The video was renamed or moved: play it from where it is now.
+    func moved(to url: URL) {
+        sourceURL = url
+        rebuildPreview(force: true)
+    }
+
     var destinationURL: URL { Self.editedURL(for: sourceURL) }
 
     /// Where the copy with blurs and pointer effects goes: next to the recording.
@@ -263,9 +273,9 @@ final class ReviewSession: ObservableObject, Identifiable {
     /// Plays the recording without the cuts, as the export will be: kept parts played one
     /// after another, with the same short fades where they meet. Rebuilt when the cuts
     /// change, keeping the place and whether it's playing.
-    private func rebuildPreview() {
+    private func rebuildPreview(force: Bool = false) {
         let edit = VideoEdit(cuts: cuts)
-        guard edit != previewEdit else { return }
+        guard force || edit != previewEdit else { return }
         previewTask?.cancel()
         previewTask = Task { [sourceURL, duration, preview] in
             // Clicking through several retakes rebuilds once.

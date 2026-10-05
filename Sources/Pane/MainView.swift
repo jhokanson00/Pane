@@ -27,6 +27,9 @@ struct MainView: View {
                     Button("How to Use Pane") { WindowPresenter.showHelp() }
                         .buttonStyle(.link)
                         .help("A short guide to recording, blurring and exporting (⌘?)")
+                    Button("Recordings") { WindowPresenter.showRecordings() }
+                        .buttonStyle(.link)
+                        .help("Every video you've made, with its size: review, rename or move to the Trash (⇧⌘L)")
                     Spacer()
                     Button("Blur an Existing Video…") { model.chooseVideoToReview() }
                         .buttonStyle(.link)
@@ -539,11 +542,7 @@ private struct SettingsForm: View {
                     Spacer()
                     Button("Edit…") { WindowPresenter.showHiddenApps() }
                 }
-                Button("Open Recordings Folder") {
-                    try? FileManager.default.createDirectory(
-                        at: RecorderModel.recordingsFolder, withIntermediateDirectories: true)
-                    NSWorkspace.shared.open(RecorderModel.recordingsFolder)
-                }
+                Button("Show Recordings") { WindowPresenter.showRecordings() }
             }
         }
         .formStyle(.grouped)
