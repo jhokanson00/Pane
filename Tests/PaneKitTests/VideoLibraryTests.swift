@@ -103,7 +103,7 @@ final class VideoLibraryTests: XCTestCase {
         XCTAssertTrue(exists("\(first)/\(first).mp4"))
         XCTAssertTrue(exists("\(first)/\(first) (Edited).mp4"))
         XCTAssertTrue(exists("\(first)/\(first) (Edited).srt"))
-        XCTAssertTrue(exists("\(first)/Clips for Final Cut/Camera.mov"))
+        XCTAssertTrue(exists("\(first)/Clips for Final Cut (not blurred)/Camera.mov"))
         XCTAssertTrue(exists("Untitled 2026-10-02 12.11 Take 2/Untitled 2026-10-02 12.11 Take 2.mp4"))
         // The first versions' "(Blurred)" copy is the edited copy.
         XCTAssertTrue(exists("Untitled 2026-10-02 12.11 Take 2/Untitled 2026-10-02 12.11 Take 2 (Edited).mp4"))
@@ -118,7 +118,7 @@ final class VideoLibraryTests: XCTestCase {
         try make("\(old)/\(old).mp4")
         try make("\(old)/\(old) (Edited).mp4")
         try make("\(old)/\(old) (Final Cut)/project.fcpxml")
-        try make("\(old)/Clips for Final Cut/Camera.mov")
+        try make("\(old)/Clips for Final Cut (not blurred)/Camera.mov")
         // The pointer log and the like live in the recording's extended attributes.
         let video = root.appendingPathComponent("\(old)/\(old).mp4")
         XCTAssertEqual(setxattr(video.path, "com.jacobhokanson.pane.test", "x", 1, 0, 0), 0)
@@ -130,7 +130,7 @@ final class VideoLibraryTests: XCTestCase {
         XCTAssertTrue(exists("\(new)/\(new).mp4"))
         XCTAssertTrue(exists("\(new)/\(new) (Edited).mp4"))
         XCTAssertTrue(exists("\(new)/\(new) (Final Cut)/project.fcpxml"))
-        XCTAssertTrue(exists("\(new)/Clips for Final Cut/Camera.mov"))
+        XCTAssertTrue(exists("\(new)/Clips for Final Cut (not blurred)/Camera.mov"))
         XCTAssertFalse(exists(old))
         XCTAssertEqual(getxattr(VideoLibrary.video(in: renamed).path, "com.jacobhokanson.pane.test", nil, 0, 0, 0), 1)
         XCTAssertTrue(VideoLibrary.isInFolder(VideoLibrary.video(in: renamed), root: root))

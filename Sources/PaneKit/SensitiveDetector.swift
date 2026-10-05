@@ -138,7 +138,7 @@ private enum Patterns {
 
     static let email = make(#"[A-Z0-9._%+\-]+@[A-Z0-9.\-]+\.[A-Z]{2,}"#, [.caseInsensitive])
 
-    static let phone = make(#"(?<![\w+])(?:\+\d{1,3}[\s.\-]?)?(?:\(\d{2,4}\)|\d{2,4})[\s.\-]?\d{3,4}[\s.\-]?\d{3,4}(?!\w)"#)
+    static let phone = make(#"(?<![\w+])(?:\+\d{1,3}[\s.\-]?)?(?:(?:\(\d{2,4}\)|\d{2,4})[\s.\-]?\d{3,4}[\s.\-]?\d{3,4}|0?\d(?:[\s.\-]?\d{2}){4})(?!\w)"#)
 
     static let card = make(#"(?<!\d)(?:\d[ \-]?){12,18}\d(?!\d)"#)
 
@@ -157,9 +157,10 @@ private enum Patterns {
         #"-----BEGIN [A-Z ]*PRIVATE KEY-----"#,
     ].map { make($0) }
 
-    /// `password: hunter2`, `API_KEY="…"` and similar. Group 1 is the value.
+    /// `password: hunter2`, `API_KEY="…"`, `DB_PASSWORD=…` and similar. Group 1 is the
+    /// value. Not `\b` before the name: an underscore counts as part of a word there.
     static let assignment = make(
-        #"\b(?:password|passwd|pwd|pass|secret|token|api[_\-]?key|access[_\-]?key|auth)\b["']?\s*[:=]\s*["']?([^\s"',;]{4,})"#,
+        #"(?<![A-Za-z0-9])(?:password|passwd|passphrase|pwd|pass|secret|token|api[_\-]?key|access[_\-]?key|private[_\-]?key|auth)(?![A-Za-z0-9])["']?\s*[:=]\s*["']?([^\s"',;]{4,})"#,
         [.caseInsensitive])
 
     /// Long random-looking tokens (checked with `looksRandom`).

@@ -8,7 +8,7 @@ import Foundation
 ///         Share a Project 2026-10-05 (Edited).mp4    Export Video
 ///         Share a Project 2026-10-05 (Edited).srt    captions
 ///         Share a Project 2026-10-05 (Final Cut)/    Send to Final Cut
-///         Clips for Final Cut/                       screen and camera kept apart
+///         Clips for Final Cut (not blurred)/         screen and camera kept apart
 ///
 /// A video's name is its title and the day it was made, and "Take 2" and on for another
 /// recording with the same title that day. Untitled videos get the time too. Moving one
@@ -18,8 +18,9 @@ import Foundation
 /// with their clips in Application Support) are listed too, and `organize` moves them
 /// into folders.
 public enum VideoLibrary {
-    /// The folder of separate screen and camera clips inside a video's folder.
-    public static let clipsFolderName = "Clips for Final Cut"
+    /// The folder of separate screen and camera clips inside a video's folder: the
+    /// recording before blurs, named so it's never taken for "(Final Cut)/Screen.mp4".
+    public static let clipsFolderName = "Clips for Final Cut (not blurred)"
     public static let untitled = "Untitled"
 
     // MARK: - Names

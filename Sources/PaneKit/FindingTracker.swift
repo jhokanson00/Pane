@@ -119,6 +119,36 @@ public enum FindingTracker {
         )
     }
 
+    /// Text being typed doesn't match until it's complete ("maria.lo" isn't an email
+    /// yet), so it would show until then. Starts each blur at the earliest reading where
+    /// the beginning of its text, three characters or more, was already in the same
+    /// place, and keeps it up while the text is deleted the same way. The blur holds its
+    /// first and last box there, which covers the whole field.
+    public static func coveringTyping(_ findings: [Finding], frames: [FrameText], interval: Double,
+                                      duration: Double) -> [Finding] {
+        findings.map { finding in
+            let key = normalize(finding.text)
+            guard finding.kind != .manual, key.count > 3,
+                  let first = finding.samples.first, let last = finding.samples.last else { return finding }
+            func isBeginning(_ word: TextBox, at rect: CGRect) -> Bool {
+                let text = normalize(word.text)
+                return text.count >= 3 && text.count < key.count && key.hasPrefix(text)
+                    && abs(word.rect.minX - rect.minX) < rect.height
+                    && abs(word.rect.midY - rect.midY) < rect.height / 2
+            }
+            var covered = finding
+            for frame in frames.reversed() where frame.time < finding.start {
+                guard frame.words.contains(where: { isBeginning($0, at: first.rect) }) else { break }
+                covered.start = max(0, frame.time - interval)
+            }
+            for frame in frames where frame.time > finding.end {
+                guard frame.words.contains(where: { isBeginning($0, at: last.rect) }) else { break }
+                covered.end = min(duration, frame.time + interval)
+            }
+            return covered
+        }
+    }
+
     static func normalize(_ text: String) -> String {
         text.lowercased().filter { !$0.isWhitespace }
     }

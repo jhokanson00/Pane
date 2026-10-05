@@ -82,6 +82,8 @@ public enum RecordingScanner {
         if verify {
             try await closeLeaks(in: &result, url: url, options: options) { progress(0.6 + $0 * 0.4) }
         }
+        result.findings = FindingTracker.coveringTyping(result.findings, frames: result.frames,
+                                                        interval: result.interval, duration: duration)
         progress(1)
         return result
     }
