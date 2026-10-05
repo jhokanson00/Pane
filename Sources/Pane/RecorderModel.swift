@@ -86,7 +86,7 @@ final class RecorderModel: ObservableObject {
     /// What the next recording is called, such as "Share a Project". Empty makes it
     /// "Untitled" with the time. Kept after recording, so another take gets "Take 2".
     @Published var videoTitle: String { didSet { save(videoTitle, "videoTitle") } }
-    /// The folder the recording in progress goes into, so the Recordings list leaves it out.
+    /// The folder the recording in progress goes into, so Recording Management leaves it out.
     @Published private(set) var recordingFolder: URL?
     /// Log keyboard shortcuts while recording, shown as badges in exports. Needs Input
     /// Monitoring, which is asked for only when this is turned on.
@@ -398,7 +398,7 @@ final class RecorderModel: ObservableObject {
         }
     }
 
-    /// Opens a video from the Recordings window in Review, without scanning it: its
+    /// Opens a video from Recording Management in Review, without scanning it: its
     /// window if it's open, or a new one. The Scan button is there if it's wanted.
     func openReview(of url: URL) {
         if let open = WindowPresenter.openReviews.first(where: { $0.sourceURL == url }) {

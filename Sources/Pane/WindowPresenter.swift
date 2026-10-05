@@ -91,7 +91,7 @@ enum WindowPresenter {
             let window = NSWindow(contentViewController: NSHostingController(
                 rootView: RecordingsView().environmentObject(RecorderModel.shared)
             ))
-            window.title = "Recordings"
+            window.title = "Recording Management"
             window.styleMask = [.titled, .closable, .miniaturizable, .resizable]
             window.setContentSize(NSSize(width: 720, height: 560))
             window.isReleasedWhenClosed = false

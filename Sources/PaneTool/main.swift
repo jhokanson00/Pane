@@ -286,7 +286,7 @@ case "zoom-export":
     try await ZoomTool.run(args)
 
 case "library":
-    // What the Recordings window lists: each video, its parts and its size. Changes nothing.
+    // What Recording Management lists: each video, its parts and its size. Changes nothing.
     let movies = FileManager.default.urls(for: .moviesDirectory, in: .userDomainMask)[0].appendingPathComponent("Pane")
     let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
         .appendingPathComponent("Pane/Clips")

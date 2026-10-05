@@ -599,13 +599,8 @@ private struct ExportPanel: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                if VideoLibrary.isInFolder(session.sourceURL, root: RecorderModel.recordingsFolder) {
-                    VideoNameRow(session: session)
-                } else {
-                    Spacer()
-                }
-                RecordingsButton()
+            if VideoLibrary.isInFolder(session.sourceURL, root: RecorderModel.recordingsFolder) {
+                VideoNameRow(session: session)
             }
             CaptionsSection(session: session)
             switch session.exportState {
@@ -680,6 +675,9 @@ private struct ExportPanel: View {
                     .controlSize(.large)
                 }
             }
+            RecordingManagementLink()
+                .frame(maxWidth: .infinity)
+                .padding(.top, 2)
         }
         .padding(14)
     }

@@ -25,7 +25,7 @@ struct PaneApp: App {
                 Button("Check for Updates…") { Support.checkForUpdates() }
             }
             CommandGroup(before: .windowList) {
-                Button("Recordings") { WindowPresenter.showRecordings() }
+                Button("Recording Management") { WindowPresenter.showRecordings() }
                     .keyboardShortcut("l", modifiers: [.command, .shift])
                 Divider()
             }

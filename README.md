@@ -74,7 +74,8 @@ The edited copy, its captions, the Final Cut folder and the separate screen and 
 clips ("Clips for Final Cut") all go in the same folder, so moving one folder to the
 Trash removes everything that belongs to a video.
 
-**Recordings** (in the main window, or Window ▸ Recordings, ⇧⌘L) lists every video
+**Recording Management** (a link in the main window and in Review, or Window ▸ Recording
+Management, ⇧⌘L) lists every video
 newest first with a thumbnail, its date, length and size, what it has (edited copy,
 captions, Final Cut, camera clips) and the total. **Review** opens it again without
 scanning; **Rename…** renames its folder and files (an open Review window follows, and
@@ -86,7 +87,7 @@ so it goes only if it's ticked too. **Organize Older Recordings…**
 moves recordings from before folders into folders of their own, with their clips from
 Application Support; Final Cut folders stay where they are, since projects already in
 Final Cut point to them. The logic is in `PaneKit/VideoLibrary.swift`;
-`pane-tool library` lists what the window shows.
+`pane-tool library` lists what Recording Management shows.
 
 ## Auto-blur
 
@@ -312,7 +313,7 @@ swift run pane-tool trim "<recording>.mp4" build/test/trim.mp4 3 72  # export on
 swift run pane-tool click-demo build/test/clicks.mp4 [--narration]  # the sample with click sounds
 swift run pane-tool click-check "<recording>.mp4" "<export>.mp4"  # click timing, narration level, durations
 swift run pane-tool captions "<recording>.mp4" [burned.mp4]   # captions as SRT; optionally burned into a copy
-swift run pane-tool library                    # what the Recordings window lists, with sizes
+swift run pane-tool library                    # what Recording Management lists, with sizes
 swift run pane-tool follow "<recording>.mp4" script.txt  # how far behind the speaker the teleprompter stays
 swift run pane-tool retakes "<recording>.mp4" script.txt [out.mp4] [--pause long]  # the retakes Review would cut, and a copy without them
 swift test
@@ -342,7 +343,7 @@ swift test
 | `Sources/PaneKit/RetakeFinder.swift` | Finds sentences said again |
 | `Sources/PaneKit/CutEdges.swift` | Places cuts in the quiet between words; fades at joins |
 | `Sources/PaneKit/VideoLibrary.swift` | One folder per video: names, listing, renaming, organizing |
-| `Sources/Pane/RecordingsView.swift` | The Recordings window |
+| `Sources/Pane/RecordingsView.swift` | The Recording Management window |
 | `Sources/PaneKit/VideoEdit.swift` | Trim plus cuts: what's kept, and time in the export |
 
 You can also open `Package.swift` in Xcode to browse and edit the code.

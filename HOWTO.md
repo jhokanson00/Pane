@@ -67,7 +67,7 @@ Click **Make Captions** (needs macOS 26). Pane turns your narration into caption
 
 ## Find, rename and clean up videos
 
-Click **Recordings** in Pane's window (⇧⌘L) to see every video with its size.
+Click **Recording Management** under the preview in Pane's window, or at the bottom of the Review window (⇧⌘L), to see every video with its size.
 
 - **Review** opens it again. Rename it from **⋯** or from the **Name** field in Review.
 - **Move to Trash** removes a video with everything that goes with it. **Keep Only the Edited Copy** frees space on a finished video.
