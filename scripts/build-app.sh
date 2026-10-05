@@ -6,14 +6,17 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 CONFIG="${1:-release}"
+BUILD_FLAGS=(-c "$CONFIG")
 if [ "${PANE_UNIVERSAL:-0}" = 1 ]; then
   # Apple silicon and Intel in one app; release.sh sets this for the download.
-  ARCH_FLAGS=(--arch arm64 --arch x86_64)
-else
-  ARCH_FLAGS=()
+  BUILD_FLAGS+=(--arch arm64 --arch x86_64)
 fi
-swift build -c "$CONFIG" ${ARCH_FLAGS[@]+"${ARCH_FLAGS[@]}"}
-BIN_DIR="$(swift build -c "$CONFIG" ${ARCH_FLAGS[@]+"${ARCH_FLAGS[@]}"} --show-bin-path)"
+if [ "${PANE_RELEASE:-0}" = 1 ]; then
+  # Releases use exactly the versions in Package.resolved (release.sh sets this).
+  BUILD_FLAGS+=(--force-resolved-versions)
+fi
+swift build "${BUILD_FLAGS[@]}"
+BIN_DIR="$(swift build "${BUILD_FLAGS[@]}" --show-bin-path)"
 
 APP="build/Pane.app"
 rm -rf "$APP"
@@ -27,6 +30,13 @@ cp HOWTO.md "$APP/Contents/Resources/HOWTO.md"
 SPARKLE="$APP/Contents/Frameworks/Sparkle.framework"
 cp -R "$BIN_DIR/Sparkle.framework" "$SPARKLE"
 rm -rf "$SPARKLE/Versions/B/XPCServices" "$SPARKLE/XPCServices"
+
+# swift build also points the app at the Xcode toolchain's libraries, searched before
+# Contents/Frameworks. Pane needs nothing from there (the Swift runtime is part of
+# macOS), so look for Sparkle only inside the app.
+while read -r RPATH; do
+  install_name_tool -delete_rpath "$RPATH" "$APP/Contents/MacOS/Pane"
+done < <(otool -l "$APP/Contents/MacOS/Pane" | awk '$1 == "path" && $2 ~ /\.xctoolchain\// { print $2 }')
 
 # Signing identity: PANE_SIGN_IDENTITY if set, else a Developer ID, else a local
 # identity so macOS remembers permissions across rebuilds, else ad-hoc.

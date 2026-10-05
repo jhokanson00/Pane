@@ -45,11 +45,13 @@
 	<string>Pane records your voice along with your screen.</string>
 	<key>NSSpeechRecognitionUsageDescription</key>
 	<string>Pane turns your narration into captions. This happens on your Mac.</string>
-	<key>SUEnableAutomaticChecks</key>
-	<true/>
 	<key>SUFeedURL</key>
 	<string>https://github.com/jhokanson00/Pane/releases/latest/download/appcast.xml</string>
 	<key>SUPublicEDKey</key>
 	<string>GM3liQnsGtLRd38gHWZTHWday27fnSkBbSb+wE08Ayc=</string>
+	<key>SURequireSignedFeed</key>
+	<true/>
+	<key>SUVerifyUpdateBeforeExtraction</key>
+	<true/>
 </dict>
 </plist>

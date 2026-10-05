@@ -8,9 +8,27 @@ enum Support {
     static let repo = URL(string: "https://github.com/jhokanson00/Pane")!
 
     /// Started at launch; checks once a day after the user agrees on the second launch.
-    static let updater = SPUStandardUpdaterController(
-        startingUpdater: true, updaterDelegate: nil, userDriverDelegate: nil
-    )
+    /// The feed must be signed with Pane's EdDSA key (SURequireSignedFeed in Info.plist).
+    static let updater: SPUStandardUpdaterController = {
+        let controller = SPUStandardUpdaterController(
+            startingUpdater: false, updaterDelegate: feed, userDriverDelegate: nil
+        )
+        // Sparkle reads a feed URL from user defaults before Info.plist, so a stray
+        // `defaults write … SUFeedURL` would move updates elsewhere. Drop it.
+        controller.updater.clearFeedURLFromUserDefaults()
+        controller.startUpdater()
+        return controller
+    }()
+
+    /// Sparkle keeps its delegate weakly, so it lives here.
+    private static let feed = FixedFeed()
+
+    /// Always the feed in Info.plist, whatever user defaults say.
+    private final class FixedFeed: NSObject, SPUUpdaterDelegate {
+        func feedURLString(for updater: SPUUpdater) -> String? {
+            Bundle.main.object(forInfoDictionaryKey: "SUFeedURL") as? String
+        }
+    }
 
     static func checkForUpdates() {
         updater.checkForUpdates(nil)
