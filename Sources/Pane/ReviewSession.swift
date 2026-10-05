@@ -168,7 +168,6 @@ final class ReviewSession: ObservableObject, Identifiable {
         pointerSwitch = RecorderModel.shared.$pointerEffects.dropFirst().sink { [weak self] on in
             MainActor.assumeIsolated { self?.updatePointerEffects(enabled: on) }
         }
-        if let scan { warnAboutLeaks(in: scan) }
         // A recording made with the teleprompter: look for retakes straight away.
         if script != nil { findRetakes() }
     }
@@ -382,18 +381,6 @@ final class ReviewSession: ObservableObject, Identifiable {
     func add(scan: ScanResult) {
         self.scan = scan
         findings = Finding.merging(findings, scanned: scan.findings)
-        warnAboutLeaks(in: scan)
-    }
-
-    /// The scan's own check saw sensitive text its blurs don't cover.
-    private func warnAboutLeaks(in scan: ScanResult) {
-        guard !scan.stillShowing.isEmpty else { return }
-        var moments: [String] = []
-        for time in scan.stillShowing.sorted() where !moments.contains(Self.format(time)) {
-            moments.append(Self.format(time))
-        }
-        let shown = moments.prefix(5).joined(separator: ", ") + (moments.count > 5 ? "…" : "")
-        notice = "The scan's check still saw sensitive text at \(shown). Look there, and draw a box over anything showing."
     }
 
     private var saveTask: Task<Void, Never>?

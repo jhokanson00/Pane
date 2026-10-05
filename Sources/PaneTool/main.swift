@@ -49,9 +49,6 @@ case "scan":
               + "\(finding.samples.count) samples  \"\(finding.text)\"  "
               + String(format: "first box x=%.2f y=%.2f w=%.2f h=%.2f", first.minX, first.minY, first.width, first.height))
     }
-    if !result.stillShowing.isEmpty {
-        print("Still showing at \(result.stillShowing.map(formatTime).joined(separator: ", "))")
-    }
 
 case "export":
     guard args.count == 3 else { fail("usage: pane-tool export <video> <out.mp4>") }

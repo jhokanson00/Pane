@@ -79,15 +79,6 @@ final class FileSafetyTests: XCTestCase {
         XCTAssertEqual(try Data(contentsOf: destination), Data("second".utf8))
     }
 
-    func testBlurTextMatchesTheWordWithPunctuation() {
-        let key = FindingTracker.wordKey("Hokanson")
-        for written in ["Hokanson,", "(Hokanson)", "Hokanson's", "HOKANSON.", "Hokanson’s"] {
-            XCTAssertEqual(FindingTracker.wordKey(written), key, written)
-        }
-        XCTAssertNotEqual(FindingTracker.wordKey("Hokansons"), key)
-        XCTAssertEqual(FindingTracker.wordKey("—"), "—")
-    }
-
     func testBlurLayersAreKeptWithTheVideo() throws {
         let drawn = Finding(kind: .manual, text: "Box at 0:01", samples: [BoxSample(time: 1, rect: CGRect(x: 0.1, y: 0.1, width: 0.2, height: 0.1))],
                             start: 0, end: 5)

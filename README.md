@@ -59,14 +59,16 @@ teleprompter script, and the blur layers (with the text they cover). They go wit
 file when it's copied, zipped or AirDropped. The "(Edited)" copy and the Final Cut
 screen file are new files without them, and with only their export date as metadata.
 
-**What a blur can and can't do.** Nothing under a blur reaches the video: its color
-comes from just outside it and its frosted texture from noise, so there's nothing to
-read back or to compare guesses against, and Pane keeps it on the text as it moves,
-including while the text is being typed. Auto-blur finds text by reading the screen, so
-it can miss some (tiny or unusual type, text the pointer covers for a long time);
-always watch the preview before you share, and drag a blur's ends or draw a box where
-needed. A blur's width hints at how long the text is, so if a
-password or key ever showed on screen, change it anyway. In Final Cut the camera is its
+**What a blur can and can't do.** A blur averages what's under it into tiles about a
+letter wide and evens them out toward one color, so the letters themselves can't be
+read, and Pane keeps it on the text as it moves. Faint smudges still show where the
+words are, and someone with the same font could compare guesses against them, so a
+short, guessable item (a name, an email, a phone number) is less safe under a blur than
+a long random key. Auto-blur finds text by reading the screen, so it can miss some (tiny
+or unusual type, text the pointer covers for a long time, an email or number still being
+typed); always watch the preview before you share, and drag a blur's ends or draw a box
+where needed. A blur's width hints at how long the text is, so if a password or key ever
+showed on screen, change it anyway. In Final Cut the camera is its
 own, unblurred layer, and the screen behind it wasn't scanned.
 
 Found a security problem? See [SECURITY.md](SECURITY.md).
@@ -134,9 +136,9 @@ When a recording stops, Pane reads its on-screen text about 3 times a second (Ap
 Vision framework, on-device) and finds emails, phone numbers, keys, tokens and passwords,
 card and ID numbers, and words from your own list. It then follows each one on every
 frame, so the blur stays on the text as you scroll, including just before it was first
-read, while it's being typed, and as it leaves the screen. The blur snaps to the real
-edges of the text so neighboring words stay readable, and gives it a frosted-glass look
-made only from the colors around it, so nothing behind it can be read back. The review window previews exactly what the export will look like.
+read and as it leaves the screen. The blur snaps to the real edges of the text so
+neighboring words stay readable, and gives it a frosted-glass look in which the letters
+can't be read. The review window previews exactly what the export will look like.
 
 The review window shows every item as a **blur layer** you can turn on or off. You can
 add your own layers: **Blur Text** (click any word to blur it everywhere it appears) or

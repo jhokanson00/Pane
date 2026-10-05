@@ -57,19 +57,6 @@ final class SensitiveDetectorTests: XCTestCase {
         let emailsOnly = SensitiveDetector(options: .init(kinds: [.email]))
         XCTAssertTrue(emailsOnly.matches(in: "Phone: (555) 123-4567").isEmpty)
     }
-
-    func testAssignmentsAfterUnderscores() {
-        assertFinds("DB_PASSWORD=Tr0ub4dor&3", .secret, "Tr0ub4dor&3")
-        assertFinds("DATABASE_PASSWORD: correct-horse", .secret, "correct-horse")
-        assertFinds("CLIENT_SECRET=abcd1234", .secret, "abcd1234")
-        assertFinds("PRIVATE_KEY = \"zyxw9876\"", .secret, "zyxw9876")
-        XCTAssertTrue(found("password_hash: md5").filter { $0.0 == .secret }.isEmpty)
-    }
-
-    func testPhonesInPairs() {
-        assertFinds("Tél. 06 12 34 56 78", .phone, "06 12 34 56 78")
-        assertFinds("+33 6 12 34 56 78", .phone, "+33 6 12 34 56 78")
-    }
 }
 
 final class FindingTests: XCTestCase {

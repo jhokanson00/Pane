@@ -139,9 +139,7 @@ private final class Job {
 
     let finding: Finding
     let keys: [BoxSample]
-    /// How far before the first reading to look for the text. Reading can miss it for
-    /// seconds, most often while the pointer rests on it, as it does while you talk
-    /// about it; the text's own pixels are still there to follow back.
+    /// How far before the first reading to look for the text.
     let lookBack: Double
     /// How far past the last reading to keep following the text: for as long as its
     /// pixels are still there. Text reading can miss small or faint text for seconds at
@@ -166,7 +164,7 @@ private final class Job {
     init(finding: Finding, interval: Double) {
         self.finding = finding
         self.keys = finding.samples
-        self.lookBack = max(interval + 0.1, 3)
+        self.lookBack = interval + 0.1
     }
 
     func needs(_ time: Double, frameDuration: Double) -> Bool {

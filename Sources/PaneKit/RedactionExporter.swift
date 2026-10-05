@@ -374,24 +374,11 @@ public enum Redaction {
     ///   its shape.
     public static func apply(to frame: CIImage, areas: [(rect: CGRect, shape: BlurShape)]) -> CIImage {
         let extent = frame.extent
-        func pixels(_ normalized: CGRect) -> CGRect {
-            CGRect(x: extent.minX + normalized.minX * extent.width, y: extent.minY + normalized.minY * extent.height,
-                   width: normalized.width * extent.width, height: normalized.height * extent.height)
-        }
-        // The frame with every area to cover cut out, for the colors around each: a box
-        // next to another mustn't take its color from the other's text.
-        let holes = areas.reduce(CIImage(color: .white).cropped(to: extent)) { mask, area in
-            CIImage(color: .black).cropped(to: pixels(area.rect)).composited(over: mask)
-        }
-        let surroundings = frame.applyingFilter("CIBlendWithMask", parameters: [
-            kCIInputBackgroundImageKey: CIImage.empty(),
-            kCIInputMaskImageKey: holes,
-        ])
+        let source = frame.clampedToExtent()
         // About one letter wide at normal reading sizes for this video.
         let baseCell = max(6, extent.height * 0.0065)
-        let noise = CIFilter(name: "CIRandomGenerator")!.outputImage!
         // A faint, soft grain gives the glass its frosted texture.
-        let grain = noise
+        let grain = CIFilter(name: "CIRandomGenerator")!.outputImage!
             .applyingGaussianBlur(sigma: 0.7)
             .applyingFilter("CIColorMatrix", parameters: [
                 "inputRVector": CIVector(x: 1, y: 0, z: 0, w: 0),
@@ -406,43 +393,42 @@ public enum Redaction {
 
         var output = frame
         for (normalized, shape) in areas {
-            let rect = pixels(normalized)
+            let rect = CGRect(x: extent.minX + normalized.minX * extent.width,
+                              y: extent.minY + normalized.minY * extent.height,
+                              width: normalized.width * extent.width,
+                              height: normalized.height * extent.height)
             // Kept whole (and at its exact position) even when partly off screen, so its
             // tiles and size stay steady as it moves; the result is cut to the frame.
             guard rect.intersects(extent) else { continue }
 
-            // Nothing inside the box reaches the output, so there's nothing to read back,
-            // not even by comparing it with guesses drawn in the same font: its color is
-            // the average of a thin ring just outside it, and its uneven frost is noise
-            // the size of a letter, not what's behind it. Bigger text gets a coarser frost.
+            // Averaging the area into tiles about one letter wide throws away the letter
+            // detail for good, so the text can't be recovered from the blur. Each tile
+            // is a true average (not one sampled pixel) and the tiles move with the
+            // text, so scrolling doesn't flicker. Bigger text gets bigger tiles.
             let cell = max(baseCell, min(rect.height * 0.22, baseCell * 2.5))
-            let ring = ringColor(around: rect, in: surroundings, extent: extent)
-            let frost = noise
-                .transformed(by: CGAffineTransform(translationX: rect.minX, y: rect.minY))
+            let tiles = source
+                .applyingFilter("CIBoxBlur", parameters: [kCIInputRadiusKey: cell / 2])
                 .applyingFilter("CIPixellate", parameters: [
                     kCIInputScaleKey: cell,
                     kCIInputCenterKey: CIVector(x: rect.minX, y: rect.minY),
                 ])
                 .applyingGaussianBlur(sigma: cell * 0.8)
-                // Brightness from about 0.8 to 1.2 times the ring's.
-                .applyingFilter("CIColorMatrix", parameters: [
-                    "inputRVector": CIVector(x: 1, y: 0, z: 0, w: 0),
-                    "inputGVector": CIVector(x: 1, y: 0, z: 0, w: 0),
-                    "inputBVector": CIVector(x: 1, y: 0, z: 0, w: 0),
-                    "inputAVector": CIVector(x: 0, y: 0, z: 0, w: 0),
-                    "inputBiasVector": CIVector(x: 0.5, y: 0.5, z: 0.5, w: 1),
-                ])
-            let glass = frost.applyingFilter("CIMultiplyCompositing", parameters: [kCIInputBackgroundImageKey: ring])
+            // Tiles over words come out darker than tiles over the gaps, so on a light
+            // background the words' lengths and spacing still show as smudges. Drawing
+            // the tiles most of the way toward the area's average color evens them out,
+            // leaving just a hint of what's behind for the frosted look.
+            let average = source
+                .applyingFilter("CIAreaAverage", parameters: [kCIInputExtentKey: CIVector(cgRect: rect.intersection(extent))])
+                .clampedToExtent()
+            let glass = tiles.applyingFilter("CIDissolveTransition", parameters: [
+                kCIInputTargetImageKey: average,
+                kCIInputTimeKey: 0.7,
+            ])
             let texture = grain.transformed(by: CGAffineTransform(translationX: rect.minX, y: rect.minY))
             // A little bigger than the rounded shape, so its soft edge never shows through to
             // empty pixels (which would draw a thin dark outline).
             let area = rect.insetBy(dx: -2, dy: -2)
-            // Text darkens light backgrounds and lightens dark ones, which is what makes
-            // a blur show up as a patch. Taken from the ring's own brightness instead of
-            // the text, so a blur still reads as one on any background.
-            let screenGlass = (glass.cropped(to: area).matchedFromWorkingSpace(to: screenColors) ?? glass)
-                .applyingFilter("CIColorClamp")
-                .applyingFilter("CIColorMatrix", parameters: inkShift)
+            let screenGlass = glass.cropped(to: area).matchedFromWorkingSpace(to: screenColors) ?? glass
             let frostedScreen = texture.composited(over: tint.composited(over: screenGlass)).cropped(to: area)
             let frosted = frostedScreen.matchedToWorkingSpace(from: screenColors) ?? frostedScreen
 
@@ -456,24 +442,6 @@ public enum Redaction {
             ])
         }
         return output.cropped(to: extent)
-    }
-
-    /// The average color of a ring just outside `rect` (the part of it on the frame), as
-    /// an opaque image of that color everywhere. `surroundings` has `rect` and every
-    /// other box cut out (clear), so only the ring around them counts.
-    private static func ringColor(around rect: CGRect, in surroundings: CIImage, extent: CGRect) -> CIImage {
-        let thickness = max(4, rect.height * 0.25)
-        let around = rect.insetBy(dx: -thickness, dy: -thickness).intersection(extent)
-        // The average is premultiplied: its alpha is how much of the area wasn't cut
-        // out. The color matrix divides by it (it works on unpremultiplied color), which
-        // leaves the ring's own average, and then makes it opaque.
-        return surroundings
-            .applyingFilter("CIAreaAverage", parameters: [kCIInputExtentKey: CIVector(cgRect: around)])
-            .clampedToExtent()
-            .applyingFilter("CIColorMatrix", parameters: [
-                "inputAVector": CIVector(x: 0, y: 0, z: 0, w: 0),
-                "inputBiasVector": CIVector(x: 0, y: 0, z: 0, w: 1),
-            ])
     }
 
     /// A white oval filling `rect`, with an edge about a pixel soft.
@@ -493,19 +461,6 @@ public enum Redaction {
                 .concatenating(CGAffineTransform(translationX: rect.midX, y: rect.midY)))
             .cropped(to: rect)
     }
-
-    /// Moves a screen color 12% of the way toward the gray opposite its brightness:
-    /// c + 0.12 × ((1 − luminance) − c).
-    private static let inkShift: [String: Any] = {
-        let k: CGFloat = 0.12
-        let (r, g, b): (CGFloat, CGFloat, CGFloat) = (0.2126 * k, 0.7152 * k, 0.0722 * k)
-        return [
-            "inputRVector": CIVector(x: 1 - k - r, y: -g, z: -b, w: 0),
-            "inputGVector": CIVector(x: -r, y: 1 - k - g, z: -b, w: 0),
-            "inputBVector": CIVector(x: -r, y: -g, z: 1 - k - b, w: 0),
-            "inputBiasVector": CIVector(x: k, y: k, z: k, w: 0),
-        ]
-    }()
 
     private static let screenColors = CGColorSpace(name: CGColorSpace.sRGB)!
     /// Colors given in this space pass through unchanged, so they stay screen colors.
