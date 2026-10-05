@@ -25,6 +25,8 @@
 # PANE_NOTARY_PROFILE picks a different profile name.
 set -euo pipefail
 cd "$(dirname "$0")/.."
+# The checks below compare sorted lists, which must sort the same in every Terminal.
+export LC_ALL=C
 
 VERSION="${1:-}"
 PUBLISH=0
