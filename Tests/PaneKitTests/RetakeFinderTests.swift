@@ -61,6 +61,20 @@ final class RetakeFinderTests: XCTestCase {
         XCTAssertEqual(retakes, [])
     }
 
+    func testAMisheardWordNeverCutsTheEndOfTheSentenceBefore() {
+        // From a real take: "It is" heard as one word, "Is". The first try of the second
+        // sentence starts at "Is", not at "works.", which ends the kept first sentence.
+        let script = PrompterScript("I am just checking to see how this teleprompter works. It is really something.")
+        let words = narration("""
+        Hello everybody, I. I am just checking to see how this teleprompter works. \
+        I am just checking to see how this teleprompter works. Is really something. It is really something.
+        """)
+        let retakes = RetakeFinder.find(script: script, words: words)
+        XCTAssertEqual(retakes.count, 2)
+        let works = words.lastIndex { $0.text == "works." }!
+        XCTAssertEqual(retakes.last?.cut.lowerBound, words[works + 1].start)
+    }
+
     func testTwoRetakesOfOneSentenceCutBothEarlierTries() {
         let (retakes, words) = find("""
         everything here is private names uh everything here is private um \

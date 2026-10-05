@@ -289,7 +289,11 @@ case "follow":
     try await FollowTool.run(args)
 
 case "retakes":
-    guard args.count == 3 else { fail("usage: pane-tool retakes <video or audio> <script.txt>") }
+    // With out.mp4, also exports the video with the retakes cut (and pointer effects), as
+    // Export Video does.
+    guard args.count == 3 || args.count == 4 else {
+        fail("usage: pane-tool retakes <video or audio> <script.txt> [out.mp4]")
+    }
     guard #available(macOS 26, *) else { fail("Needs macOS 26 or later") }
     let script = PrompterScript(try String(contentsOfFile: args[2], encoding: .utf8))
     let words = try await CaptionTranscriber.words(url: URL(fileURLWithPath: args[1]))
@@ -300,6 +304,23 @@ case "retakes":
         print(String(format: "cut %.2f–%.2f s (%.2f s): \"%@\"", retake.cut.lowerBound, retake.cut.upperBound,
                      retake.cut.upperBound - retake.cut.lowerBound, cutWords.map(\.text).joined(separator: " ")))
         print("   said again: \(retake.text)…")
+    }
+    if args.count == 4 {
+        let url = URL(fileURLWithPath: args[1]), out = URL(fileURLWithPath: args[3])
+        guard let videoTrack = try await AVURLAsset(url: url).loadTracks(withMediaType: .video).first else { fail("No video") }
+        let size = try await videoTrack.load(.naturalSize)
+        let effects: [any FrameEffect] = [PointerTrack.load(from: url).flatMap {
+            PointerRenderer(track: $0, style: PointerEffectStyle(), videoSize: size)
+        }].compactMap { $0 }
+        let cuts = retakes.map(\.cut)
+        try await RedactionExporter.export(source: url, to: out, findings: [], effects: effects, cuts: cuts)
+        let duration = try await AVURLAsset(url: url).load(.duration).seconds
+        let expected = VideoEdit(cuts: cuts).outputDuration(duration: duration)
+        var lengths: [String] = []
+        for track in try await AVURLAsset(url: out).load(.tracks) {
+            lengths.append("\(track.mediaType.rawValue) \(String(format: "%.3f", try await track.load(.timeRange).duration.seconds))s")
+        }
+        print(String(format: "Exported: expected %.3fs; ", expected) + lengths.joined(separator: ", "))
     }
 
 case "captions":

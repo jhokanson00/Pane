@@ -36,7 +36,8 @@ public enum RetakeFinder {
             if index - lastRetake > 2, let again = repeatedWords(follower: follower, heard: heard, words: words,
                                                                    upTo: index, before: before) {
                 let (start, first, end) = again
-                if let firstTry = said[first], firstTry < start {
+                if let guess = said[first] {
+                    let firstTry = firstTry(of: first, guess: guess, before: start, follower: follower, words: words)
                     let cut = words[firstTry].start...words[start].start
                     if cut.upperBound - cut.lowerBound > 0.3 {
                         let shown = script.words[first..<min(max(before, end), first + 8)].map(\.text)
@@ -62,6 +63,20 @@ public enum RetakeFinder {
             }
         }
         return retakes
+    }
+
+    /// Where the first try of script word `first` began. Where each script word was said
+    /// is counted back from where the follower moved, which is off by a word when the
+    /// transcriber hears fewer words than were said ("It is" as "Is"): the guess can be the
+    /// last word of the sentence before, which is kept. So if the guessed word doesn't sound
+    /// like this script word or the next, the first try starts at the first one that does.
+    private static func firstTry(of first: Int, guess: Int, before start: Int, follower: ScriptFollower,
+                                 words: [CaptionWord]) -> Int {
+        let script = follower.script
+        let keys = script.words[first..<min(first + 2, script.words.count)].map(\.key)
+        func soundsRight(_ index: Int) -> Bool { keys.contains { follower.isSimilar(words[index].text, $0) } }
+        guard guess < start, !soundsRight(guess) else { return min(guess, start) }
+        return (guess + 1..<start).first(where: soundsRight) ?? guess
     }
 
     /// When the latest words repeat script words already said (and match them better than
