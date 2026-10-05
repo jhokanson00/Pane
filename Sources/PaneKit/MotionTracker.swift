@@ -27,10 +27,13 @@ public enum MotionTracker {
             try follow(jobs: jobs, asset: asset, track: track, duration: duration,
                        frameDuration: 1 / max(frameRate, 1), progress: progress)
             var result = findings
+            var extra: [Finding] = []
             for (index, job) in zip(tracked, jobs) {
-                result[index] = job.refinedFinding()
+                let refined = job.refinedFindings()
+                result[index] = refined[0]
+                extra += refined.dropFirst()
             }
-            return mergingDuplicates(result, frameDuration: 1 / max(frameRate, 1))
+            return mergingDuplicates(result + extra, frameDuration: 1 / max(frameRate, 1))
         }.value
     }
 
@@ -148,6 +151,11 @@ private final class Job {
     let lookAhead = Double.infinity
     /// How long to keep moving the blur after losing the text, in case it's still there.
     let coast = 0.15
+    /// How long to keep moving with the page after losing the text: a fast scroll is over
+    /// by then, and the text is either matched again or gone.
+    let followPage = 1.0
+    /// How far back to keep moving text that was scrolling in but can't be matched.
+    let coastBack = 0.3
 
     private var nextKey = 0
     private var template: Template?
@@ -157,6 +165,8 @@ private final class Job {
     private var lostAt: Double?
     private var isDone = false
     private var path: [Point] = []
+    /// Where the text was before each place it was read, found by tracing back.
+    private var traced: [Point] = []
     private var anchors: [Anchor] = []
     /// The tracking frame size, for converting boxes back to normalized ones.
     private var frame: LumaPlane?
@@ -186,6 +196,23 @@ private final class Job {
         let afterLastKey = nextKey >= keys.count
 
         if let lostAt {
+            // Lost in a fast scroll: the text is still under the page that's moving, so
+            // move with the page until the text can be matched again or a reading finds it.
+            if let previous = recent.last, plane.time - lostAt <= followPage,
+               let shift = PageShift.vertical(from: previous, to: plane, around: template.rect(at: origin)) {
+                origin.y += shift
+                velocity = CGPoint(x: 0, y: shift)
+                if let found = template.locate(in: plane, near: origin) {
+                    move(to: found)
+                    self.lostAt = nil
+                }
+                if template.isOffScreen(at: origin, in: plane) {
+                    isDone = afterLastKey
+                } else {
+                    record(plane.time)
+                }
+                return
+            }
             // Between readings, the next reading picks the text back up.
             guard afterLastKey else { return }
             // Text scrolling off the edge can't be matched once most of it is gone, but
@@ -208,6 +235,17 @@ private final class Job {
         if let found = template.locate(in: plane, near: predicted) {
             move(to: found)
             record(plane.time)
+        } else if let previous = recent.last,
+                  let shift = PageShift.vertical(from: previous, to: plane, around: template.rect(at: origin)) {
+            // Too smeared to match (a fast scroll), but the page around it can be followed.
+            lostAt = plane.time
+            origin.y += shift
+            velocity = CGPoint(x: 0, y: shift)
+            if template.isOffScreen(at: origin, in: plane) {
+                isDone = afterLastKey
+            } else {
+                record(plane.time)
+            }
         } else {
             lostAt = plane.time
             if afterLastKey {
@@ -244,7 +282,8 @@ private final class Job {
             record(plane.time)
             anchors.append(Anchor(segment: segment, offset: CGPoint(x: rect.minX - origin.x, y: rect.minY - origin.y),
                                   size: rect.size))
-            if isFirst { traceBack(from: plane.time, through: recent) }
+            // Text found in a new place may have scrolled in a moment before it was read.
+            traceBack(from: plane.time, through: recent)
             return
         }
         record(plane.time)
@@ -252,29 +291,44 @@ private final class Job {
                               size: rect.size))
     }
 
-    /// Follows the text backward to where it was just before the first reading.
+    /// Follows the text backward to where it was just before it was read in this place.
     private func traceBack(from time: Double, through recent: [LumaPlane]) {
         guard let template else { return }
         var position = origin
         var drift = CGPoint.zero
         var earlier: [Point] = []
         var lost = false
+        var later = recent.last { $0.time >= time - 0.0001 }
+        var lastSure = time
         for plane in recent.reversed() where plane.time < time && plane.time >= time - lookBack {
+            defer { later = plane }
             let guess = CGPoint(x: position.x + drift.x, y: position.y + drift.y)
             if !lost, let found = template.locate(in: plane, near: guess) {
                 drift = CGPoint(x: found.x - position.x, y: found.y - position.y)
                 position = found
+                lastSure = plane.time
+            } else if !lost, let later,
+                      let shift = PageShift.vertical(from: plane, to: later, around: template.rect(at: position)) {
+                // Too smeared to match: move back with the page.
+                drift = CGPoint(x: 0, y: -shift)
+                position.y -= shift
+                if template.isOffScreen(at: position, in: plane) { break }
             } else if template.isPartlyOffScreen(at: position, in: plane) {
                 // Scrolling in from the edge: keep covering the part already showing.
                 lost = true
                 position = guess
                 if template.isOffScreen(at: position, in: plane) { break }
+            } else if !lost, lastSure - plane.time <= (hypot(drift.x, drift.y) > 0.3 ? coastBack : coast) {
+                // Hidden or cut off but most likely still there (scrolling out from under
+                // a header that stays put, or the pointer over it): keep going the same
+                // way for a moment.
+                position = guess
             } else {
                 break
             }
             earlier.append(Point(time: plane.time, origin: position, segment: segment))
         }
-        path.insert(contentsOf: earlier.reversed(), at: 0)
+        traced += earlier
     }
 
     private var predicted: CGPoint {
@@ -291,9 +345,11 @@ private final class Job {
         path.append(Point(time: time, origin: origin, segment: segment))
     }
 
-    /// The finding with a box for every frame it was followed through.
-    func refinedFinding() -> Finding {
-        guard !path.isEmpty, !anchors.isEmpty, let plane = frame else { return finding }
+    /// The finding with a box for every frame it was followed through. Text that shows
+    /// up in a new place while the old one is still being followed (a second copy
+    /// scrolling in) becomes a finding of its own, since one blur can't be in two places.
+    func refinedFindings() -> [Finding] {
+        guard !path.isEmpty, !anchors.isEmpty, let plane = frame else { return [finding] }
 
         // Each reading measures the box a little differently. One size for the whole
         // finding keeps the blur from changing shape: big enough for nearly all its
@@ -313,24 +369,44 @@ private final class Job {
             placement[run] = (CGPoint(x: center.x - size.width / 2, y: center.y - size.height / 2), size)
         }
 
-        var samples: [BoxSample] = path.compactMap { point in
+        func box(_ point: Point) -> BoxSample? {
             guard let place = placement[point.segment] else { return nil }
             let rect = CGRect(x: point.origin.x + place.offset.x, y: point.origin.y + place.offset.y,
                               width: place.size.width, height: place.size.height)
             return BoxSample(time: point.time, rect: plane.normalizedRect(rect))
         }
-        // Readings where the text couldn't be followed still count.
-        let followed = samples.map(\.time)
-        for key in keys where !followed.contains(where: { abs($0 - key.time) < 0.001 }) {
-            samples.append(key)
-        }
-        samples.sort { $0.time < $1.time }
 
-        var refined = finding
-        refined.samples = samples
-        refined.start = samples.first!.time
-        refined.end = samples.last!.time
-        return refined
+        // Each place's boxes; a place starts a new finding when it begins before the
+        // last one ends.
+        var groups: [[BoxSample]] = []
+        for run in Set(path.map(\.segment)).sorted() {
+            let points = (traced + path).filter { $0.segment == run }
+            let boxes = points.compactMap(box)
+            guard let first = boxes.map(\.time).min() else { continue }
+            if groups.isEmpty || first <= groups[groups.count - 1].map(\.time).max()! + 0.001 {
+                groups.append(boxes)
+            } else {
+                groups[groups.count - 1] += boxes
+            }
+        }
+        guard !groups.isEmpty else { return [finding] }
+
+        // Readings where the text couldn't be followed still count, in the place active then.
+        for key in keys {
+            let index = groups.lastIndex { $0.contains { $0.time <= key.time + 0.001 } } ?? 0
+            if !groups[index].contains(where: { abs($0.time - key.time) < 0.001 }) {
+                groups[index].append(key)
+            }
+        }
+
+        return groups.enumerated().map { index, boxes in
+            var refined = finding
+            if index > 0 { refined.id = UUID() }
+            refined.samples = boxes.sorted { $0.time < $1.time }
+            refined.start = refined.samples.first!.time
+            refined.end = refined.samples.last!.time
+            return refined
+        }
     }
 
     private func median(_ values: [CGFloat]) -> CGFloat {
@@ -478,6 +554,10 @@ struct Template {
     /// Scores are relative to the text's own contrast; 0 is a perfect match.
     private var goodEnough: Double { max(5 / max(contrast, 1), 0.4) }
 
+    func rect(at origin: CGPoint) -> CGRect {
+        CGRect(x: origin.x, y: origin.y, width: CGFloat(width), height: CGFloat(height))
+    }
+
     func isPartlyOffScreen(at origin: CGPoint, in plane: LumaPlane) -> Bool {
         origin.x < 0 || origin.y < 0
             || origin.x + CGFloat(width) > CGFloat(plane.width) || origin.y + CGFloat(height) > CGFloat(plane.height)
@@ -580,6 +660,72 @@ struct Template {
                     if sum > limit { return nil }
                 }
                 return Double(sum) / Double(count) / scale
+            }
+        }
+    }
+}
+
+// MARK: - Page movement
+
+/// How far the page around some text scrolled from one frame to the next. In a fast
+/// scroll the text itself is too smeared to match, but both frames are smeared alike,
+/// and the rows of the page around it still line up: each row's average brightness,
+/// over the text's columns, makes a profile that moves with the page.
+enum PageShift {
+    /// The vertical move of the page around `rect` (pixels, top-left origin) from
+    /// `previous` to `current`, or nil if there's too little there to follow or nothing
+    /// lines up (the page changed rather than scrolled).
+    static func vertical(from previous: LumaPlane, to current: LumaPlane, around rect: CGRect) -> CGFloat? {
+        guard previous.width == current.width, previous.height == current.height else { return nil }
+        let x0 = max(0, Int(rect.minX)), x1 = min(current.width, Int(rect.maxX))
+        guard x1 - x0 >= 8 else { return nil }
+        // The text and a few lines above and below it: enough page to be sure of the match.
+        let reach = max(Int(rect.height * 3), 24)
+        let y0 = max(0, Int(rect.minY) - reach), y1 = min(current.height, Int(rect.maxY) + reach)
+        guard y1 - y0 >= 16 else { return nil }
+        let maxShift = current.height / 4
+
+        let before = profile(previous, x0: x0, x1: x1, y0: y0, y1: y1)
+        let after = profile(current, x0: x0, x1: x1, y0: max(0, y0 - maxShift), y1: min(current.height, y1 + maxShift))
+        let afterStart = max(0, y0 - maxShift)
+
+        // A blank stretch of page matches anywhere.
+        let mean = before.reduce(0, +) / Double(before.count)
+        let spread = before.reduce(0) { $0 + abs($1 - mean) } / Double(before.count)
+        guard spread > 2 else { return nil }
+
+        var scores: [(shift: Int, score: Double)] = []
+        for shift in -maxShift...maxShift {
+            var sum = 0.0, count = 0
+            for (i, value) in before.enumerated() {
+                let j = y0 + i + shift - afterStart
+                guard j >= 0, j < after.count else { continue }
+                sum += abs(value - after[j])
+                count += 1
+            }
+            // Most of the page must still be on screen to count.
+            guard count * 3 >= before.count * 2 else { continue }
+            scores.append((shift, sum / Double(count)))
+        }
+        guard let best = scores.min(by: { $0.score < $1.score }) else { return nil }
+        // A real match is much closer than the page is busy, and clearly better than
+        // shifts well away from it (a repeating pattern, like list rows, is ambiguous).
+        guard best.score < spread * 0.35 else { return nil }
+        let others = scores.filter { abs($0.shift - best.shift) > max(Int(rect.height), 4) }
+        if let runnerUp = others.min(by: { $0.score < $1.score }), runnerUp.score < best.score * 1.5 + 0.5 {
+            return nil
+        }
+        return CGFloat(best.shift)
+    }
+
+    private static func profile(_ plane: LumaPlane, x0: Int, x1: Int, y0: Int, y1: Int) -> [Double] {
+        guard y1 > y0 else { return [] }
+        return plane.pixels.withUnsafeBufferPointer { p in
+            (y0..<y1).map { y in
+                var sum = 0
+                let row = y * plane.width
+                for x in x0..<x1 { sum += Int(p[row + x]) }
+                return Double(sum) / Double(x1 - x0)
             }
         }
     }

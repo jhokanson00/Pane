@@ -6,6 +6,7 @@
 //   swift run pane-tool frame video.mp4 2.5 out.png  save one frame as an image
 //   swift run pane-tool blur in.png out.png x y w h [--circle]  try the blur on a still image
 //   swift run pane-tool check                     measure how closely blurs follow the sample's scrolling
+//   swift run pane-tool stretch video.mp4          where blurs grow taller than their text while scrolling
 //   swift run pane-tool pointer-demo out.mp4 [blue]  export the sample with scripted pointer effects
 //   swift run pane-tool pointer-frames video.mp4 dir  mark the recorded pointer on its fastest frames
 //   swift run pane-tool shortcuts-demo out.mp4 [--camera]  export the sample with scripted shortcut badges
@@ -86,6 +87,39 @@ case "blur":
     try context.writePNGRepresentation(of: output, to: URL(fileURLWithPath: blurArgs[2]), format: .RGBA8,
                                        colorSpace: CGColorSpace(name: CGColorSpace.sRGB)!)
     print("Wrote \(blurArgs[2])")
+
+case "stretch":
+    // A blur that loses its text mid-scroll covers everywhere the text could have been,
+    // which shows as a tall patch. Lists each blur's tallest moments against its usual size.
+    guard args.count == 2 else { fail("usage: pane-tool stretch <video>") }
+    let url = URL(fileURLWithPath: args[1])
+    let result = try await RecordingScanner.scan(url: url, options: .init())
+    let track = try await AVURLAsset(url: url).loadTracks(withMediaType: .video).first!
+    let size = try await track.load(.naturalSize)
+    let rate = Double(try await track.load(.nominalFrameRate))
+    let aspect = size.width / size.height
+    var stretched = 0, frames = 0, worst = 1.0
+    for finding in result.findings {
+        let heights = finding.samples.map(\.rect.height).sorted()
+        let usual = heights[heights.count / 2]
+        var times: [Double] = []
+        var tallest = 1.0
+        for frame in Int(finding.start * rate)...Int(finding.end * rate) {
+            let time = Double(frame) / rate
+            guard let rect = finding.coverRect(at: time, aspect: aspect) else { continue }
+            frames += 1
+            let ratio = rect.height / (usual * 1.36)
+            tallest = max(tallest, ratio)
+            if ratio > 1.5 { times.append(time) }
+        }
+        worst = max(worst, tallest)
+        guard !times.isEmpty else { continue }
+        stretched += times.count
+        print("\(finding.kind.rawValue.padding(toLength: 13, withPad: " ", startingAt: 0)) "
+              + String(format: "up to %.1f× tall, %d frames, %@–%@", tallest, times.count,
+                       formatTime(times.first!), formatTime(times.last!)))
+    }
+    print(String(format: "Stretched frames: %d of %d. Tallest: %.1f×", stretched, frames, worst))
 
 case "check":
     // Scans a fresh sample video and compares each blur's position on every frame with
