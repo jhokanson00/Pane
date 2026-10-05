@@ -409,6 +409,11 @@ swift test
 
 You can also open `Package.swift` in Xcode to browse and edit the code.
 
+
+## Author
+
+Made by [Jacob Hokanson](https://jlh.ca), who builds web and Mac software in Victoria, BC. More of his apps and tools are at [jlh.ca/tools](https://jlh.ca/tools).
+
 ## License
 
 MIT. See [LICENSE](LICENSE).
