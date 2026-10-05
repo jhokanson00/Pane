@@ -71,6 +71,7 @@ Click **Recordings** in Pane's window (⇧⌘L) to see every video with its size
 
 - **Review** opens it again. Rename it from **⋯** or from the **Name** field in Review.
 - **Move to Trash** removes a video with everything that goes with it. **Keep Only the Edited Copy** frees space on a finished video.
+- Tick several videos, or **Select All**, then **Move Selected to Trash** to clear them at once.
 - **Organize Older Recordings** puts recordings from before folders into folders.
 
 ## Edit an older video

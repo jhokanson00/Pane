@@ -71,7 +71,19 @@ final class RecordingsLibrary: ObservableObject {
 
     /// Moves everything that belongs to the video to the Trash.
     func trash(_ item: VideoLibrary.Item) {
-        moveToTrash(item.files, video: item.video)
+        trash([item])
+    }
+
+    /// Moves several videos to the Trash at once, everything that belongs to each. Videos
+    /// still being exported or scanned are left alone.
+    func trash(_ items: [VideoLibrary.Item]) {
+        let free = items.filter { item in item.video.map { !RecorderModel.shared.isBusy($0) } ?? true }
+        for item in free { moveToTrash(item.files, video: item.video, refreshing: false) }
+        if free.count < items.count {
+            problem = "\(items.count - free.count) video\(items.count - free.count == 1 ? " is" : "s are") still being "
+                + "exported or scanned, so \(items.count - free.count == 1 ? "it was" : "they were") left alone."
+        }
+        refresh()
     }
 
     /// Moves the recording and its separate clips to the Trash, keeping the edited copy,
@@ -81,11 +93,12 @@ final class RecordingsLibrary: ObservableObject {
         moveToTrash([video] + [item.clips].compactMap { $0 }, video: video)
     }
 
-    private func moveToTrash(_ files: [URL], video: URL?) {
+    private func moveToTrash(_ files: [URL], video: URL?, refreshing: Bool = true) {
         if let video, RecorderModel.shared.isBusy(video) {
             problem = "This video is still being exported or scanned. Try again when that's done."
             return
         }
+        defer { if refreshing { refresh() } }
         WindowPresenter.closeReviews(showing: files)
         for file in files {
             do {
@@ -95,7 +108,6 @@ final class RecordingsLibrary: ObservableObject {
             }
         }
         if let video { RecorderModel.shared.recordingRemoved(video) }
-        refresh()
     }
 
     /// Gathers recordings from before folders into folders.
@@ -143,6 +155,9 @@ struct RecordingsView: View {
     @State private var trashing: VideoLibrary.Item?
     @State private var trimming: VideoLibrary.Item?
     @State private var organizing = false
+    /// The rows ticked, by item.
+    @State private var selected = Set<URL>()
+    @State private var trashingSelected = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -156,8 +171,10 @@ struct RecordingsView: View {
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
+                selectionBar
+                Divider()
                 List(library.items) { item in
-                    RecordingRow(item: item, rename: {
+                    RecordingRow(item: item, isSelected: selection(item), rename: {
                         newTitle = item.title
                         renaming = item
                     }, trash: { trashing = item }, keepOnlyEdited: { trimming = item })
@@ -193,6 +210,8 @@ struct RecordingsView: View {
         }
         .frame(minWidth: 560, minHeight: 360)
         .onAppear { library.refresh() }
+        // Only rows still there stay ticked.
+        .onChange(of: library.items) { selected.formIntersection(library.items.map(\.id)) }
         .onReceive(model.$lastRecordingURL) { _ in library.refresh() }
         .onReceive(model.$recordingFolder) { _ in library.refresh() }
         .onReceive(NotificationCenter.default.publisher(for: NSWindow.didBecomeKeyNotification)) { _ in
@@ -218,6 +237,17 @@ struct RecordingsView: View {
             Text("The recording, its edited copy, captions and Final Cut files all go to the Trash. "
                  + "You can put them back from there until it's emptied.")
         }
+        .confirmationDialog("Move \(selectedItems.count) item\(selectedItems.count == 1 ? "" : "s") to the Trash?",
+                            isPresented: $trashingSelected) {
+            Button("Move to Trash", role: .destructive) {
+                library.trash(selectedItems)
+                selected = []
+            }
+        } message: {
+            Text("Each one goes with everything that belongs to it: the recording, its edited copy, captions and "
+                 + "Final Cut files (\(ByteCountFormatter.string(fromByteCount: selectedItems.reduce(0) { $0 + $1.size }, countStyle: .file)) "
+                 + "in all). You can put them back from the Trash until it's emptied.")
+        }
         .confirmationDialog("Keep only the edited copy?",
                             isPresented: Binding(get: { trimming != nil }, set: { if !$0 { trimming = nil } })) {
             Button("Move Original to Trash", role: .destructive) {
@@ -236,6 +266,40 @@ struct RecordingsView: View {
         }
     }
 
+    /// Select All, how many are ticked, and moving them to the Trash.
+    private var selectionBar: some View {
+        HStack {
+            Toggle(isOn: Binding(
+                get: { !library.items.isEmpty && selected.count == library.items.count },
+                set: { selected = $0 ? Set(library.items.map(\.id)) : [] }
+            )) {
+                Text("Select All")
+            }
+            .toggleStyle(.checkbox)
+            if !selected.isEmpty {
+                Text("\(selected.count) selected, "
+                     + ByteCountFormatter.string(fromByteCount: selectedItems.reduce(0) { $0 + $1.size }, countStyle: .file))
+                    .foregroundStyle(.secondary)
+            }
+            Spacer()
+            Button("Move Selected to Trash…") { trashingSelected = true }
+                .disabled(selected.isEmpty)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 8)
+    }
+
+    private var selectedItems: [VideoLibrary.Item] {
+        library.items.filter { selected.contains($0.id) }
+    }
+
+    private func selection(_ item: VideoLibrary.Item) -> Binding<Bool> {
+        Binding(
+            get: { selected.contains(item.id) },
+            set: { if $0 { selected.insert(item.id) } else { selected.remove(item.id) } }
+        )
+    }
+
     private func display(_ item: VideoLibrary.Item) -> String {
         item.title.isEmpty ? VideoLibrary.untitled : item.title
     }
@@ -245,6 +309,7 @@ private struct RecordingRow: View {
     @EnvironmentObject private var model: RecorderModel
     @ObservedObject private var library = RecordingsLibrary.shared
     let item: VideoLibrary.Item
+    @Binding var isSelected: Bool
     let rename: () -> Void
     let trash: () -> Void
     let keepOnlyEdited: () -> Void
@@ -253,6 +318,9 @@ private struct RecordingRow: View {
 
     var body: some View {
         HStack(spacing: 12) {
+            Toggle("Select", isOn: $isSelected)
+                .toggleStyle(.checkbox)
+                .labelsHidden()
             preview
             VStack(alignment: .leading, spacing: 3) {
                 Text(title).font(.headline).lineLimit(1)

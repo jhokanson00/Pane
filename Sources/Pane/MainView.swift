@@ -27,9 +27,6 @@ struct MainView: View {
                     Button("How to Use Pane") { WindowPresenter.showHelp() }
                         .buttonStyle(.link)
                         .help("A short guide to recording, blurring and exporting (⌘?)")
-                    Button("Recordings") { WindowPresenter.showRecordings() }
-                        .buttonStyle(.link)
-                        .help("Every video you've made, with its size: review, rename or move to the Trash (⇧⌘L)")
                     Spacer()
                     Button("Blur an Existing Video…") { model.chooseVideoToReview() }
                         .buttonStyle(.link)
@@ -142,6 +139,7 @@ private struct VideoNameField: View {
                 TextField("Untitled", text: $model.videoTitle)
                     .textFieldStyle(.roundedBorder)
                     .disabled(model.state != .idle)
+                RecordingsButton()
             }
             Text("Saves as \u{201C}\(VideoLibrary.uniqueName(title: model.videoTitle, date: Date(), in: RecorderModel.recordingsFolder))\u{201D} "
                  + "in its own folder in Movies \u{25B8} Pane.")
@@ -152,6 +150,19 @@ private struct VideoNameField: View {
         }
         .help("Another recording with the same name today becomes Take 2. A script that starts with "
               + "a line like \u{201C}# Share a Project\u{201D} fills this in.")
+    }
+}
+
+/// Opens the Recordings window: every video, to review, rename or clear out. In the main
+/// window and in Review.
+struct RecordingsButton: View {
+    var body: some View {
+        Button {
+            WindowPresenter.showRecordings()
+        } label: {
+            Label("Recordings", systemImage: "film.stack")
+        }
+        .help("Every video you've made, with its size: review, rename or move to the Trash (⇧⌘L)")
     }
 }
 

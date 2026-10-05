@@ -151,7 +151,9 @@ public enum VideoLibrary {
                 captions: existing(entry.appendingPathComponent(name + " (Edited).srt")),
                 finalCut: existing(entry.appendingPathComponent(name + " (Final Cut)")),
                 clips: existing(entry.appendingPathComponent(clipsFolderName)),
-                files: [entry], date: date(in: name) ?? created(entry), size: size(of: entry)))
+                // When the recording was made: a named video's name only has the day.
+                files: [entry], date: [video, edited].first(where: exists).map(created) ?? date(in: name) ?? created(entry),
+                size: size(of: entry)))
         }
 
         // Loose recordings, grouped by name.

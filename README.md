@@ -79,7 +79,10 @@ newest first with a thumbnail, its date, length and size, what it has (edited co
 captions, Final Cut, camera clips) and the total. **Review** opens it again without
 scanning; **Rename…** renames its folder and files (an open Review window follows, and
 Review has a Name field that does the same); **Move to Trash…** and **Keep Only the
-Edited Copy…** use the Trash, so they can be undone. **Organize Older Recordings…**
+Edited Copy…** use the Trash, so they can be undone until it's emptied; tick several
+(or **Select All**) and **Move Selected to Trash…** to clear them at once. Each goes with
+everything that belongs to it; an older recording's "(Final Cut)" folder is its own row,
+so it goes only if it's ticked too. **Organize Older Recordings…**
 moves recordings from before folders into folders of their own, with their clips from
 Application Support; Final Cut folders stay where they are, since projects already in
 Final Cut point to them. The logic is in `PaneKit/VideoLibrary.swift`;
