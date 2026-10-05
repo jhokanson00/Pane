@@ -50,8 +50,11 @@ public enum RedactionExporter {
         }
         let enabled = findings.filter(\.isEnabled)
 
+        // Written aside and moved into place when complete (OutputFile).
+        let scratch = try OutputFile.scratch(for: destination)
+        defer { OutputFile.discard(scratch) }
         let job = ExportJob(
-            asset: asset, destination: destination, videoTrack: videoTrack, audioTracks: audioTracks,
+            asset: asset, destination: scratch, videoTrack: videoTrack, audioTracks: audioTracks,
             audioFormats: audioFormats, size: size, frameRate: frameRate, dataRate: dataRate,
             duration: duration, findings: enabled, effects: effects, progress: progress
         )
@@ -71,6 +74,7 @@ public enum RedactionExporter {
         } onCancel: {
             job.cancel()
         }
+        try OutputFile.place(scratch, at: destination)
     }
 }
 
@@ -152,7 +156,6 @@ private final class ExportJob: @unchecked Sendable {
         }
         audioOutputs.forEach { reader.add($0) }
 
-        try? FileManager.default.removeItem(at: destination)
         let writer = try AVAssetWriter(outputURL: destination, fileType: .mp4)
         let width = Int(size.width)
         let height = Int(size.height)
@@ -266,7 +269,6 @@ private final class ExportJob: @unchecked Sendable {
         if isCancelled {
             reader.cancelReading()
             writer.cancelWriting()
-            try? FileManager.default.removeItem(at: destination)
             throw CancellationError()
         }
         if reader.status == .failed {

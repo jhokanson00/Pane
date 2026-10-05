@@ -383,7 +383,7 @@ private struct LayerRow: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
 
-                if session.canRetime(finding) {
+                if session.canRemove(finding) {
                     Button(role: .destructive) { session.remove(finding.id) } label: {
                         Image(systemName: "trash")
                     }
@@ -627,9 +627,20 @@ private struct ExportPanel: View {
                     .help("Opens a Final Cut project with the screen (blurred, with pointer effects), the camera on its "
                           + "own layer, and a marker at every click. Retakes you keep go on a layer of their own there.")
                 }
-                Text("Saves a new copy with the blur and pointer effects. Your original recording stays unchanged.")
+                Text(session.findings.contains(where: \.isEnabled)
+                     ? "Saves a new copy with the blur and pointer effects. Your original recording stays unchanged."
+                     : "Nothing is blurred. Saves a new copy with the pointer effects; your original recording "
+                     + "stays unchanged.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
+                if ReviewSession.finalCut != nil, session.hasSeparateCamera {
+                    // The camera clip isn't blurred, and the screen behind the bubble was
+                    // never scanned (the scan read the recording with the camera in it).
+                    Text("In Final Cut the camera is its own layer, as recorded: blurs don't cover it, and text "
+                         + "behind it wasn't scanned. If you move it, check what it uncovers.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
 
             case .exporting(let progress):
                 ProgressView(value: progress) {

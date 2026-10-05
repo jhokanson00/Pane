@@ -94,25 +94,26 @@ extension PointerTrack {
     static let attributeName = "com.jacobhokanson.pane.pointer"
 
     public func save(to url: URL) throws {
-        let json = try JSONEncoder().encode(self)
-        let data = try (json as NSData).compressed(using: .lzfse) as Data
-        let result = data.withUnsafeBytes { bytes in
-            setxattr(url.path, Self.attributeName, bytes.baseAddress, bytes.count, 0, 0)
-        }
-        if result != 0 { throw CocoaError(.fileWriteUnknown) }
+        try FileAttribute.writePacked(self, name: Self.attributeName, to: url)
     }
 
-    /// The pointer recorded with `url`, or nil for videos Pane didn't record.
+    /// The pointer recorded with `url`, or nil for videos Pane didn't record (or whose
+    /// attribute makes no sense: videos come from anywhere).
     public static func load(from url: URL) -> PointerTrack? {
-        let size = getxattr(url.path, attributeName, nil, 0, 0, 0)
-        guard size > 0 else { return nil }
-        var data = Data(count: size)
-        let read = data.withUnsafeMutableBytes { bytes in
-            getxattr(url.path, attributeName, bytes.baseAddress, size, 0, 0)
+        FileAttribute.readPacked(PointerTrack.self, name: attributeName, from: url).flatMap { track in
+            track.isPlausible ? track : nil
         }
-        guard read == size,
-              let json = try? (data as NSData).decompressed(using: .lzfse) as Data
-        else { return nil }
-        return try? JSONDecoder().decode(PointerTrack.self, from: json)
+    }
+
+    /// Times and places a recording could have, and a pointer size that isn't absurd:
+    /// anything else would break the effects' arithmetic.
+    var isPlausible: Bool {
+        pointSize.isFinite && pointSize > 0 && pointSize <= 1
+            && FileAttribute.isPlausible(cameraCircle)
+            && samples.allSatisfy { FileAttribute.isPlausibleTime($0.time) && FileAttribute.isPlausible($0.x, $0.y) }
+            && clicks.allSatisfy {
+                FileAttribute.isPlausibleTime($0.time) && FileAttribute.isPlausibleTime($0.duration)
+                    && FileAttribute.isPlausible($0.x, $0.y)
+            }
     }
 }

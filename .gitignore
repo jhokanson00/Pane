@@ -5,3 +5,21 @@ build/
 xcuserdata/
 .DS_Store
 .claude/
+
+# Recordings, exports and release output never belong in the repo.
+*.mp4
+*.mov
+*.m4a
+*.wav
+*.srt
+*.fcpxml
+*.dmg
+appcast.xml
+# Keys and credentials.
+*.p12
+*.p8
+*.pem
+*.key
+.env*
+# Session notes kept locally.
+HANDOFF.md

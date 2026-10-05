@@ -211,7 +211,10 @@ public struct FinalCutProject: Sendable {
     }
 
     func escape(_ text: String) -> String {
-        text.replacingOccurrences(of: "&", with: "&amp;")
+        // XML 1.0 can't hold most control characters at all, so they're left out.
+        let allowed = text.unicodeScalars.filter { $0.value >= 0x20 || $0 == "\t" || $0 == "\n" || $0 == "\r" }
+        return String(String.UnicodeScalarView(allowed))
+            .replacingOccurrences(of: "&", with: "&amp;")
             .replacingOccurrences(of: "<", with: "&lt;")
             .replacingOccurrences(of: ">", with: "&gt;")
             .replacingOccurrences(of: "\"", with: "&quot;")

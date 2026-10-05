@@ -101,3 +101,48 @@ public struct Finding: Identifiable, Codable, Sendable, Equatable {
         return String(chars.prefix(keep)) + String(repeating: "•", count: 6) + String(chars.suffix(keep))
     }
 }
+
+// MARK: - Saving with the video
+
+extension Finding {
+    /// A video's blur layers, kept in its extended attributes like the pointer track, so
+    /// reviewing it again starts from what was blurred before. Without them, exporting
+    /// again would replace the blurred copy with an unblurred one.
+    static let attributeName = "com.jacobhokanson.pane.blurs"
+
+    public static func save(_ findings: [Finding], to url: URL) throws {
+        try FileAttribute.writePacked(findings, name: attributeName, to: url)
+    }
+
+    /// The layers saved with `url`, or nil if none were (or they make no sense).
+    public static func load(from url: URL) -> [Finding]? {
+        FileAttribute.readPacked([Finding].self, name: attributeName, from: url).flatMap { findings in
+            findings.allSatisfy(\.isPlausible) ? findings : nil
+        }
+    }
+
+    var isPlausible: Bool {
+        FileAttribute.isPlausibleTime(start) && FileAttribute.isPlausibleTime(end) && text.count <= 1000
+            && samples.allSatisfy { FileAttribute.isPlausibleTime($0.time) && FileAttribute.isPlausible($0.rect) }
+    }
+
+    /// The layers after a new scan: what it found replaces what an earlier scan found,
+    /// and blurs you drew or picked with Blur Text stay. (A picked word the new scan
+    /// also found, from the word list, isn't kept twice.)
+    public static func merging(_ earlier: [Finding], scanned: [Finding]) -> [Finding] {
+        let kept = earlier.filter { old in
+            switch old.kind {
+            case .manual:
+                true
+            case .customWord:
+                !scanned.contains {
+                    $0.kind == .customWord && $0.text.lowercased() == old.text.lowercased()
+                        && $0.start <= old.end && old.start <= $0.end
+                }
+            default:
+                false
+            }
+        }
+        return kept + scanned
+    }
+}

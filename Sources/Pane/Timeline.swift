@@ -21,13 +21,16 @@ extension ReviewSession {
         trim = nil
     }
 
-    /// Blurs you drew and word-list blurs can start and stop anywhere. The ones the scan
-    /// found keep the times it tracked the text for.
-    func canRetime(_ finding: Finding) -> Bool {
+    /// Blurs you drew and word-list blurs can be removed. The ones the scan found are
+    /// turned off instead, so they can be turned back on.
+    func canRemove(_ finding: Finding) -> Bool {
         finding.kind == .manual || finding.kind == .customWord
     }
 
     /// Moves when a blur starts or stops, keeping it at least a tenth of a second long.
+    /// Any blur can, including the scan's: reading can find text late (the pointer resting
+    /// on it hides it from the reader), and a blur holds its first and last place outside
+    /// the times it was followed.
     func setTimes(of id: Finding.ID, start: Double? = nil, end: Double? = nil) {
         guard let index = findings.firstIndex(where: { $0.id == id }) else { return }
         if let start { findings[index].start = min(max(start, 0), findings[index].end - 0.1) }
@@ -337,20 +340,18 @@ private struct FindingTrack: View {
                 .offset(x: start)
                 .onTapGesture { session.seek(to: finding.start + 0.01) }
                 .help("\(finding.kind.label) · \(ReviewSession.format(finding.start))–\(ReviewSession.format(finding.end))")
-            if session.canRetime(finding) {
-                EdgeHandle(color: color) { x in
-                    session.setTimes(of: finding.id, start: scale.time(x))
-                    session.seek(to: session.findings.first { $0.id == finding.id }?.start ?? 0)
-                }
-                .offset(x: start - 6)
-                .help("Drag to change when this blur starts")
-                EdgeHandle(color: color) { x in
-                    session.setTimes(of: finding.id, end: scale.time(x))
-                    session.seek(to: session.findings.first { $0.id == finding.id }?.end ?? 0)
-                }
-                .offset(x: end - 6)
-                .help("Drag to change when this blur stops")
+            EdgeHandle(color: color) { x in
+                session.setTimes(of: finding.id, start: scale.time(x))
+                session.seek(to: session.findings.first { $0.id == finding.id }?.start ?? 0)
             }
+            .offset(x: start - 6)
+            .help("Drag to change when this blur starts")
+            EdgeHandle(color: color) { x in
+                session.setTimes(of: finding.id, end: scale.time(x))
+                session.seek(to: session.findings.first { $0.id == finding.id }?.end ?? 0)
+            }
+            .offset(x: end - 6)
+            .help("Drag to change when this blur stops")
         }
         .coordinateSpace(name: "track")
     }

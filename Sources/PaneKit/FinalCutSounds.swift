@@ -28,7 +28,7 @@ extension FinalCutProject {
                 let times = clicks.filter { ($0.button == .right) == (button == .right) }.map(\.time).sorted()
                 guard !times.isEmpty else { continue }
                 let file = folder.appendingPathComponent(ClickSound.fileName(for: button))
-                try ClickSound.wav(for: button).write(to: file)
+                try ClickSound.wav(for: button).write(to: file, options: .atomic)
                 effects.append(SoundEffect(name: name, file: file, samples: ClickSound.samples(for: button).count,
                                            times: times))
             }

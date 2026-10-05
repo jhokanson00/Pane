@@ -25,13 +25,49 @@ New to Pane? [HOWTO.md](HOWTO.md) is a short guide. The same guide opens in the 
 Everything happens on your Mac: recording, reading text on screen, blurring and
 captions all use Apple's on-device frameworks. Pane never uploads your recordings and
 has no accounts, analytics or tracking. Its only network request is the update check,
-which downloads a small file from this repo's GitHub releases. Recordings are saved to
+which downloads a small file from this repo's GitHub releases (and the first time you
+make captions, macOS may download its speech model). Recordings are saved to
 `~/Movies/Pane`, one folder per video.
 
 **Permissions.** On first use macOS asks for **Screen & System Audio Recording**,
 **Camera** and **Microphone**. After granting Screen Recording, quit and reopen Pane.
 Captions ask for **Speech Recognition**, and keyboard shortcut badges for **Input
 Monitoring**, only when you turn them on.
+
+## Security
+
+**Updates can't be swapped.** Pane updates with [Sparkle](https://sparkle-project.org)
+over HTTPS. Every update is signed with an EdDSA key that isn't on GitHub, and Pane
+checks it against the public key it shipped with before installing; from 1.1 the update
+feed is signed too, and Pane accepts nothing else. Pane never installs an older version.
+Downloads are signed with Developer ID (team `DHGK36B2V9`) and notarized by Apple; each
+release lists its `.dmg`'s SHA-256. To check a download:
+
+```bash
+spctl --assess --type open --context context:primary-signature -v Pane-1.1.0.dmg
+shasum -a 256 Pane-1.1.0.dmg
+```
+
+**What Pane can do.** It runs with Apple's hardened runtime and asks for nothing beyond
+the camera and microphone in its signature; Screen Recording, Speech Recognition and
+Input Monitoring are the macOS permissions above. It runs no helper programs or scripts
+(apart from reopening itself after a permission change) and loads no plug-ins.
+
+**Share the edited copy.** The original recording is unblurred, and it carries Pane's
+notes in its extended attributes: where the pointer went, the shortcuts you pressed, the
+teleprompter script, and the blur layers (with the text they cover). They go with the
+file when it's copied, zipped or AirDropped. The "(Edited)" copy and the Final Cut
+screen file are new files without them, and with only their export date as metadata.
+
+**What a blur can and can't do.** Blurs mix blurring, pixelating and grain so text
+can't be read back by eye, and Pane keeps them on the text as it moves. Auto-blur finds
+text by reading the screen, so it can miss some (tiny or unusual type, text the pointer
+covers for a long time); always watch the preview before you share, and drag a blur's
+ends or draw a box where needed. A blur's width hints at how long the text is, so if a
+password or key ever showed on screen, change it anyway. In Final Cut the camera is its
+own, unblurred layer, and the screen behind it wasn't scanned.
+
+Found a security problem? See [SECURITY.md](SECURITY.md).
 
 ## Report a bug
 
@@ -51,7 +87,8 @@ directly. Please don't attach recordings that show private information.
 - Microphone and optional system audio
 - 3-2-1 countdown
 - **Never record** list: windows from chosen apps (1Password, Messages, etc.) are left
-  out of the recording entirely. Pane's own windows are always excluded.
+  out of the recording. Open them before you start: one opened mid-recording can show
+  for its first few frames (see below). Pane's own windows are always excluded.
 
 **No distractions in full-screen recordings.** Notification banners are always left out,
 including ones that pop up mid-recording; desktop widgets stay. Turn on "Hide desktop
@@ -77,8 +114,8 @@ Trash removes everything that belongs to a video.
 **Recording Management** (a link in the main window and in Review, or Window ▸ Recording
 Management, ⇧⌘L) lists every video
 newest first with a thumbnail, its date, length and size, what it has (edited copy,
-captions, Final Cut, camera clips) and the total. **Review** opens it again without
-scanning; **Rename…** renames its folder and files (an open Review window follows, and
+captions, Final Cut, camera clips) and the total. **Review** opens it again, with the
+blur layers it had, without scanning; **Rename…** renames its folder and files (an open Review window follows, and
 Review has a Name field that does the same); **Move to Trash…** and **Keep Only the
 Edited Copy…** use the Trash, so they can be undone until it's emptied; tick several
 (or **Select All**) and **Move Selected to Trash…** to clear them at once. Each goes with
@@ -103,6 +140,8 @@ The review window shows every item as a **blur layer** you can turn on or off. Y
 add your own layers: **Blur Text** (click any word to blur it everywhere it appears) or
 **Draw Box** (blur any area for the whole video, or narrow it by dragging its ends in the timeline). **Export
 Video** saves an edited copy, with the blur and pointer effects, next to the original.
+The layers are kept with the recording, so reviewing it again later starts with them,
+and scanning again replaces only what the earlier scan found.
 
 To review any existing video, use "Blur an Existing Video…" in the main window, drop the
 file on Pane's Dock icon, or choose Open With → Pane in Finder.
@@ -206,9 +245,9 @@ Under the player in the review window, a timeline shows the whole recording: the
 each blur layer, the clicks and the captions, with the playhead running through them.
 Click anywhere on it to jump there. Drag either end of the **Video** bar to cut off the
 start or end; **Clear Trim** keeps the whole video again, and the text beside it says
-what's kept (for example "Keeping 0:03–1:12"). Drag the ends of a blur you drew, or a
-word-list blur, to change when it shows; blurs the scan found keep the times it tracked
-the text for. **Export Video** saves only that part, with the sound in step and
+what's kept (for example "Keeping 0:03–1:12"). Drag the ends of any blur to change when
+it shows, for example a blur the scan found a moment late; outside the times it followed
+the text, a blur stays where it first or last was. **Export Video** saves only that part, with the sound in step and
 blurs and pointer effects where they were. **Send to Final Cut** keeps the whole files
 and trims the clips in the project instead, so the cut parts can be brought back by
 dragging a clip's ends; clicks outside the kept part get no marker. The trim lasts while
@@ -254,7 +293,9 @@ once in the timeline index.
 captions with Apple's speech recognition, entirely on your Mac (macOS 26 or later; the
 speech model downloads once if needed). It takes about a second per minute of audio.
 Captions are cut into short cues of up to two 42-character lines, one to six seconds
-each, broken at sentence ends, commas or pauses, and "um" and "uh" are left out. Export
+each, broken at sentence ends, commas or pauses, and "um" and "uh" are left out. What
+Auto-blur hides on screen is hidden in the captions too: words from your word list,
+emails and numbers you say aloud are written as "•••". Export
 Video then also saves "<name> (Edited).srt" next to the video; **Burn captions into the
 video** draws them as white text on a dark box near the bottom, moved clear of the camera
 circle (shortcut badges then sit just above them); and Send to Final Cut adds them to the
@@ -276,18 +317,28 @@ Recording access again after every build.
 
 ### Releasing
 
+Write what's new in `docs/releases/<version>.md` (Markdown) and commit it, then:
+
 ```bash
-scripts/release.sh 1.0.0             # build, notarize, make the .dmg and appcast.xml
-scripts/release.sh 1.0.0 --publish   # also create the GitHub release
+scripts/release.sh 1.1.0             # build, notarize, make the .dmg and a signed appcast.xml
+scripts/release.sh 1.1.0 --publish   # tag, push main and publish the GitHub release
 ```
 
-The script sets the version in `Resources/Info.plist`, builds a universal app signed
-with the Developer ID certificate in the keychain and the hardened runtime, notarizes
-and staples the app and the `.dmg`, and signs the `.dmg` for Sparkle with the EdDSA key
-in the keychain (`generate_keys --account Pane`; its public half is `SUPublicEDKey`).
+The script sets the version in `Resources/Info.plist` with a build number above the live
+one (committed when the tree is clean), builds a universal app with the Developer ID
+certificate in the keychain and the hardened runtime, checks its team and entitlements,
+notarizes and staples the app and the `.dmg`, and signs the `.dmg` for Sparkle with the
+EdDSA key in the keychain (`generate_keys --account Pane`; its public half is
+`SUPublicEDKey`), checking that signature against `SUPublicEDKey`. The notes go inside
+`appcast.xml`, which is then signed with the same key: Pane only accepts a signed feed.
 Each release carries its own `appcast.xml`, which the app reads from
-`releases/latest/download/appcast.xml`. Without a Developer ID it makes a test build and
-won't publish. Notarizing needs a stored profile, made once:
+`releases/latest/download/appcast.xml`.
+
+`--publish` needs a clean `main` that includes `origin/main`, and reuses the build in
+`build/release` if it was made from the same commit. It tags that commit, pushes, uploads
+a draft release, checks that GitHub holds exactly the files built, then publishes it.
+Without a Developer ID it makes a test build and won't publish. Notarizing needs a stored
+profile, made once:
 
 ```bash
 xcrun notarytool store-credentials pane-notary --apple-id <your Apple ID> --team-id <team ID>

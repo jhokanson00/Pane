@@ -198,4 +198,15 @@ final class CaptionsTests: XCTestCase {
         XCTAssertEqual(edited.cues[1].end, 2.2, accuracy: 1e-9)
         XCTAssertEqual(edited.cues[2].start, 2.5, accuracy: 1e-9)
     }
+
+    func testSensitiveWordsAreHidden() {
+        let captions = Captions(cues: [
+            Caption(start: 0, end: 2, text: "Send it to Maria\nLopez at maria@acme.com"),
+            Caption(start: 2, end: 4, text: "Then click Save."),
+        ], language: "en")
+        let detector = SensitiveDetector(options: .init(customWords: ["Maria Lopez"]))
+        let hidden = captions.hiding(detector)
+        XCTAssertEqual(hidden.cues[0].text, "Send it to ••• at •••")
+        XCTAssertEqual(hidden.cues[1].text, "Then click Save.")
+    }
 }

@@ -348,3 +348,28 @@ public struct Captions: Codable, Equatable, Sendable {
         return [texts[..<split].joined(separator: " "), texts[split...].joined(separator: " ")]
     }
 }
+
+extension Captions {
+    /// The captions with what `detector` finds (your word list, emails, numbers) written
+    /// as "•••", so a name or number said aloud doesn't end up in the text the blur
+    /// keeps off the screen.
+    public func hiding(_ detector: SensitiveDetector) -> Captions {
+        var hidden = self
+        for index in hidden.cues.indices {
+            let text = hidden.cues[index].text
+            // Read as one line, so a name split over the two lines is still found. Only
+            // the line breaks differ, so positions carry over.
+            let flat = text.replacingOccurrences(of: "\n", with: " ")
+            let matches = detector.matches(in: flat).sorted { $0.range.lowerBound > $1.range.lowerBound }
+            guard !matches.isEmpty else { continue }
+            var result = Array(text)
+            for match in matches {
+                let lower = flat.distance(from: flat.startIndex, to: match.range.lowerBound)
+                let upper = flat.distance(from: flat.startIndex, to: match.range.upperBound)
+                result.replaceSubrange(lower..<upper, with: "•••")
+            }
+            hidden.cues[index].text = String(result)
+        }
+        return hidden
+    }
+}

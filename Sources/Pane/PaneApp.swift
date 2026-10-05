@@ -57,9 +57,36 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     /// A video dropped on the Dock icon or opened with "Open With → Pane".
     func application(_ application: NSApplication, open urls: [URL]) {
-        if let url = urls.first {
+        if let url = urls.first(where: \.isFileURL) {
             RecorderModel.shared.review(videoAt: url)
         }
+    }
+
+    /// An unfinished MP4 can't be opened, so quitting mid-recording (Quit, logging out,
+    /// installing an update) saves the recording first. Quitting mid-export asks.
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        let model = RecorderModel.shared
+        switch model.state {
+        case .idle:
+            break
+        case .countingDown:
+            model.cancelCountdown()
+        case .recording, .finishing:
+            Task {
+                await model.stopRecording()
+                // Saving takes a moment; don't wait forever if it's stuck.
+                for _ in 0..<300 where model.state != .idle { try? await Task.sleep(for: .milliseconds(100)) }
+                sender.reply(toApplicationShouldTerminate: true)
+            }
+            return .terminateLater
+        }
+        guard WindowPresenter.openReviews.contains(where: \.isExporting) else { return .terminateNow }
+        let alert = NSAlert()
+        alert.messageText = "Pane is still exporting."
+        alert.informativeText = "If you quit now, the export stops and isn't saved."
+        alert.addButton(withTitle: "Keep Exporting")
+        alert.addButton(withTitle: "Quit")
+        return alert.runModal() == .alertSecondButtonReturn ? .terminateNow : .terminateCancel
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {

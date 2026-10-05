@@ -106,12 +106,12 @@ public enum FindingTracker {
     /// Follows one word or phrase through the whole recording, wherever it appears.
     public static func track(text: String, kind: SensitiveKind = .customWord,
                              frames: [FrameText], interval: Double, duration: Double) -> [Finding] {
-        let key = normalize(text)
+        let key = wordKey(text)
         return build(
             frames: frames,
             boxes: { frame in
                 frame.words
-                    .filter { normalize($0.text) == key }
+                    .filter { wordKey($0.text) == key }
                     .map { TextBox(text: text, rect: $0.rect, kind: kind) }
             },
             interval: interval,
@@ -121,6 +121,17 @@ public enum FindingTracker {
 
     static func normalize(_ text: String) -> String {
         text.lowercased().filter { !$0.isWhitespace }
+    }
+
+    /// A word as it's written anywhere: "Hokanson", "Hokanson," "(Hokanson)" and
+    /// "Hokanson's" are all the same word to blur.
+    static func wordKey(_ text: String) -> String {
+        var word = normalize(text).trimmingCharacters(in: .punctuationCharacters.union(.symbols))
+        for suffix in ["'s", "’s"] where word.hasSuffix(suffix) && word.count > suffix.count {
+            word.removeLast(suffix.count)
+        }
+        // Punctuation on its own stays itself, not "" (which every other mark would match).
+        return word.isEmpty ? normalize(text) : word
     }
 
     static func iou(_ a: CGRect, _ b: CGRect) -> Double {

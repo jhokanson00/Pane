@@ -21,6 +21,8 @@ public struct ScanResult: Sendable {
     public var duration: Double
     /// Times of frames where much of the screen changed (scrolling, switching pages).
     var changes: [Double] = []
+    /// Where the final check still saw sensitive text the blurs don't cover, in seconds.
+    public var stillShowing: [Double] = []
 }
 
 /// Notices when much of the screen changes from one frame to the next, which is where
@@ -113,7 +115,9 @@ public enum RecordingScanner {
             let report = try await LeakAudit.run(url: url, findings: result.findings, options: options, ranges: ranges,
                                                  thorough: false, progress: { progress(share.0 + $0 * share.1) })
             let times = report.leaks.map(\.time)
-            // Nothing left, or the extra readings didn't help.
+            // Nothing left, or the extra readings didn't help: say where, rather than
+            // let "found N items" sound like everything is covered.
+            result.stillShowing = times
             guard !report.frames.isEmpty, times != previous else { return }
             previous = times
 

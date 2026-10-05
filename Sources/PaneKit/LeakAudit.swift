@@ -22,7 +22,7 @@ public enum LeakAudit {
     }
 
     /// Text counts as hidden when the blurs cover at least this much of it.
-    static let enough = 0.9
+    static let enough = 0.98
 
     /// - Parameters:
     ///   - every: Check every nth frame.

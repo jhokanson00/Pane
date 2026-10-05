@@ -50,8 +50,11 @@ enum Permissions {
         let pid = ProcessInfo.processInfo.processIdentifier
         let task = Process()
         task.executableURL = URL(fileURLWithPath: "/bin/sh")
-        task.arguments = ["-c", "while kill -0 \(pid) 2>/dev/null; do sleep 0.1; done; open \"$0\"",
+        // Full paths and a fixed PATH: whatever this runs would run with Pane's
+        // permissions (Screen Recording, Camera, Microphone).
+        task.arguments = ["-c", "while kill -0 \(pid) 2>/dev/null; do /bin/sleep 0.1; done; /usr/bin/open \"$0\"",
                           Bundle.main.bundlePath]
+        task.environment = ["PATH": "/usr/bin:/bin"]
         try? task.run()
         // macOS won't quit an app with a sheet open (the window picker offers this button),
         // so close sheets first.

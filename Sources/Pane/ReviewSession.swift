@@ -39,6 +39,7 @@ final class ReviewSession: ObservableObject, Identifiable {
         didSet {
             preview.findings = findings
             refreshPausedFrame()
+            saveFindingsSoon()
         }
     }
     /// Where the pointer went, for recordings Pane made. Clicks can be turned off one by one.
@@ -130,7 +131,10 @@ final class ReviewSession: ObservableObject, Identifiable {
     init(sourceURL: URL, scan: ScanResult?, videoSize: CGSize, duration: Double) {
         self.sourceURL = sourceURL
         self.scan = scan
-        self.findings = scan?.findings ?? []
+        // The layers saved with the video last time, updated by a new scan.
+        let saved = Finding.load(from: sourceURL) ?? []
+        let findings = scan.map { Finding.merging(saved, scanned: $0.findings) } ?? saved
+        self.findings = findings
         self.videoSize = videoSize
         self.duration = duration
         let pointer = PointerTrack.load(from: sourceURL)
@@ -143,7 +147,7 @@ final class ReviewSession: ObservableObject, Identifiable {
 
         // The player shows the same blur and pointer effects the export will write.
         let item = AVPlayerItem(url: sourceURL)
-        preview.findings = scan?.findings ?? []
+        preview.findings = findings
         self.player = AVPlayer(playerItem: item)
         updatePointerEffects()
         Task { [preview] in
@@ -164,11 +168,13 @@ final class ReviewSession: ObservableObject, Identifiable {
         pointerSwitch = RecorderModel.shared.$pointerEffects.dropFirst().sink { [weak self] on in
             MainActor.assumeIsolated { self?.updatePointerEffects(enabled: on) }
         }
+        if let scan { warnAboutLeaks(in: scan) }
         // A recording made with the teleprompter: look for retakes straight away.
         if script != nil { findRetakes() }
     }
 
     func close() {
+        if saveTask != nil { saveFindings() }
         player.pause()
         if let timeObserver { player.removeTimeObserver(timeObserver) }
         timeObserver = nil
@@ -180,6 +186,7 @@ final class ReviewSession: ObservableObject, Identifiable {
 
     /// Exporting, making captions or finding retakes: the video's files can't be moved now.
     var isBusy: Bool { exportTask != nil || captionTask != nil || retakeTask != nil }
+    var isExporting: Bool { exportTask != nil }
 
     /// The video was renamed or moved: play it from where it is now.
     func moved(to url: URL) {
@@ -370,10 +377,42 @@ final class ReviewSession: ObservableObject, Identifiable {
         tool = .none
     }
 
-    /// Adds what a text scan found, keeping the layers already here.
+    /// Adds what a text scan found: it replaces what an earlier scan found, and the
+    /// blurs drawn or picked stay.
     func add(scan: ScanResult) {
         self.scan = scan
-        findings += scan.findings
+        findings = Finding.merging(findings, scanned: scan.findings)
+        warnAboutLeaks(in: scan)
+    }
+
+    /// The scan's own check saw sensitive text its blurs don't cover.
+    private func warnAboutLeaks(in scan: ScanResult) {
+        guard !scan.stillShowing.isEmpty else { return }
+        var moments: [String] = []
+        for time in scan.stillShowing.sorted() where !moments.contains(Self.format(time)) {
+            moments.append(Self.format(time))
+        }
+        let shown = moments.prefix(5).joined(separator: ", ") + (moments.count > 5 ? "…" : "")
+        notice = "The scan's check still saw sensitive text at \(shown). Look there, and draw a box over anything showing."
+    }
+
+    private var saveTask: Task<Void, Never>?
+
+    /// Keeps the layers with the video (see `Finding.save`), a moment after the last
+    /// change so dragging in the timeline doesn't write on every step.
+    private func saveFindingsSoon() {
+        saveTask?.cancel()
+        saveTask = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(1))
+            guard !Task.isCancelled else { return }
+            self?.saveFindings()
+        }
+    }
+
+    private func saveFindings() {
+        saveTask?.cancel()
+        saveTask = nil
+        try? Finding.save(findings, to: sourceURL)
     }
 
     /// Blurs the word under `point` (normalized, bottom-left origin) everywhere it
@@ -415,6 +454,7 @@ final class ReviewSession: ObservableObject, Identifiable {
 
     func export() {
         guard exportTask == nil else { return }
+        saveFindings()
         player.pause()
         exportState = .exporting(0)
         let source = sourceURL
@@ -447,6 +487,12 @@ final class ReviewSession: ObservableObject, Identifiable {
     /// Final Cut Pro, if it's installed.
     static let finalCut = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.apple.FinalCut")
 
+    /// The camera was also kept as a clip of its own, which Final Cut gets as a layer.
+    var hasSeparateCamera: Bool {
+        let clips = RecorderModel.separateClips(for: sourceURL)
+        return [clips.screen, clips.camera].allSatisfy { FileManager.default.fileExists(atPath: $0.path) }
+    }
+
     /// Where the files for Final Cut go: a folder next to the recording.
     var finalCutFolder: URL {
         sourceURL.deletingLastPathComponent()
@@ -458,12 +504,13 @@ final class ReviewSession: ObservableObject, Identifiable {
     /// Cut, which asks which library to import into.
     func sendToFinalCut() {
         guard exportTask == nil, let finalCut = Self.finalCut else { return }
+        saveFindings()
         player.pause()
         isSendingToFinalCut = true
         exportState = .exporting(0)
 
         let clips = RecorderModel.separateClips(for: sourceURL)
-        let separate = [clips.screen, clips.camera].allSatisfy { FileManager.default.fileExists(atPath: $0.path) }
+        let separate = hasSeparateCamera
         // With the camera on its own layer, which may be moved in Final Cut, effects are
         // drawn everywhere, including where the camera was. Captions go over as Final Cut
         // captions instead of being drawn in.

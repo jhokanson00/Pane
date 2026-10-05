@@ -1,1 +1,6 @@
-blank_issues_enabled: true
+# The bug form asks for versions and warns against attaching private recordings.
+blank_issues_enabled: false
+contact_links:
+  - name: Report a security problem
+    url: https://github.com/jhokanson00/Pane/security/advisories/new
+    about: Please report it privately here, not as a public issue.

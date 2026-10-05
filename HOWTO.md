@@ -73,7 +73,7 @@ When asked for a script, reply with only the script, ready to paste into Pane.
 - **Blur Text**: click any word to blur it everywhere it appears.
 - **Draw Box** or **Draw Circle**: drag over an area to blur it.
 - **My word list**: words Pane always blurs, like names or clients. Edit it under Auto-blur.
-- **Never record**: apps whose windows never appear in recordings, like 1Password and Messages. Edit it under Privacy.
+- **Never record**: apps whose windows never appear in recordings, like 1Password and Messages. Edit it under Privacy. Open those apps before you start recording: one opened mid-recording can show for a split second.
 
 ## Make it look good
 
@@ -91,7 +91,7 @@ To show the keyboard shortcuts you press, turn on **Show keyboard shortcuts** un
 The timeline under the video shows your recording, each blur, your clicks and captions. Click it to jump anywhere.
 
 - Drag either end of the **Video** bar to cut off the start or the end. **Clear Trim** undoes it.
-- Drag either end of a blur you drew to change when it shows.
+- Drag either end of a blur to change when it shows: one you drew, or one the scan found that starts a moment late.
 
 ## Cut retakes
 
@@ -105,12 +105,12 @@ If you recorded with the teleprompter, Pane finds the sentences you said again. 
 
 ## Captions
 
-Click **Make Captions** (needs macOS 26). Pane turns your narration into captions on your Mac. Turn on **Burn captions into the video** to draw them on the video. Either way, a captions file (.srt) is saved next to it.
+Click **Make Captions** (needs macOS 26). Pane turns your narration into captions on your Mac. Turn on **Burn captions into the video** to draw them on the video. Either way, a captions file (.srt) is saved next to it. Names from your word list, emails and numbers you say aloud show as "•••".
 
 ## Save your video
 
 - **Export Video** saves an "(Edited)" copy next to your recording. The original never changes.
-- **Send to Final Cut** opens the video in Final Cut Pro, with your camera on its own layer and a marker at every click.
+- **Send to Final Cut** opens the video in Final Cut Pro, with your camera on its own layer and a marker at every click. The camera layer isn't blurred, and whatever was behind it wasn't scanned: if you move it in Final Cut, check what it uncovers.
 
 ## Find, rename and clean up videos
 

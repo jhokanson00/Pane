@@ -74,23 +74,35 @@ extension ReviewSession {
     }
 
     /// The captions as exported: without the words in cut retakes, which are made again
-    /// from the words left so no caption repeats a flubbed line.
+    /// from the words left so no caption repeats a flubbed line, and with what a scan
+    /// would blur (your word list, emails, numbers) hidden.
     var exportCaptions: Captions? {
         guard let captions else { return nil }
+        let detector = Self.captionDetector()
         let cuts = cuts
-        guard !cuts.isEmpty, let spokenWords else { return captions }
+        guard !cuts.isEmpty, let spokenWords else { return captions.hiding(detector) }
         let kept = spokenWords.filter { word in
             let middle = (word.start + word.end) / 2
             return !cuts.contains { $0.contains(middle) }
         }
-        return Captions(words: kept, language: captions.language)
+        return Captions(words: kept, language: captions.language).hiding(detector)
+    }
+
+    /// The scan's detector, made again only when its settings change: the timeline asks
+    /// for the captions every time it's drawn.
+    private static func captionDetector() -> SensitiveDetector {
+        let options = RecorderModel.shared.scanOptions
+        if let cached = cachedDetector, cached.options == options { return cached.detector }
+        let detector = SensitiveDetector(options: options)
+        cachedDetector = (options, detector)
+        return detector
     }
 
     /// Saves the captions as "<video name>.srt" next to an exported video.
     /// - Parameter edit: What the video kept, so the captions match its times.
     func saveCaptions(besideVideo video: URL, edit: VideoEdit) throws {
         guard let captions = exportCaptions?.edited(edit, duration: duration), !captions.cues.isEmpty else { return }
-        try captions.srt.write(to: Self.captionsURL(for: video), atomically: true, encoding: .utf8)
+        try OutputFile.write(Data(captions.srt.utf8), to: Self.captionsURL(for: video))
     }
 
     static func captionsURL(for video: URL) -> URL {
@@ -173,3 +185,5 @@ struct CaptionsSection: View {
         }
     }
 }
+
+@MainActor private var cachedDetector: (options: SensitiveDetector.Options, detector: SensitiveDetector)?

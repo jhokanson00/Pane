@@ -154,25 +154,20 @@ extension ShortcutTrack {
     static let attributeName = "com.jacobhokanson.pane.keys"
 
     public func save(to url: URL) throws {
-        let json = try JSONEncoder().encode(self)
-        let data = try (json as NSData).compressed(using: .lzfse) as Data
-        let result = data.withUnsafeBytes { bytes in
-            setxattr(url.path, Self.attributeName, bytes.baseAddress, bytes.count, 0, 0)
-        }
-        if result != 0 { throw CocoaError(.fileWriteUnknown) }
+        try FileAttribute.writePacked(self, name: Self.attributeName, to: url)
     }
 
-    /// The shortcuts recorded with `url`, or nil if none were recorded.
+    /// The shortcuts recorded with `url`, or nil if none were recorded (or the
+    /// attribute makes no sense).
     public static func load(from url: URL) -> ShortcutTrack? {
-        let size = getxattr(url.path, attributeName, nil, 0, 0, 0)
-        guard size > 0 else { return nil }
-        var data = Data(count: size)
-        let read = data.withUnsafeMutableBytes { bytes in
-            getxattr(url.path, attributeName, bytes.baseAddress, size, 0, 0)
+        FileAttribute.readPacked(ShortcutTrack.self, name: attributeName, from: url).flatMap { track in
+            track.isPlausible ? track : nil
         }
-        guard read == size,
-              let json = try? (data as NSData).decompressed(using: .lzfse) as Data
-        else { return nil }
-        return try? JSONDecoder().decode(ShortcutTrack.self, from: json)
+    }
+
+    /// Times a recording could have, and key names that fit on a badge.
+    var isPlausible: Bool {
+        FileAttribute.isPlausible(cameraCircle)
+            && presses.allSatisfy { FileAttribute.isPlausibleTime($0.time) && $0.shortcut.key.count <= 40 }
     }
 }

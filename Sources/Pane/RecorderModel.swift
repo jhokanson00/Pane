@@ -698,8 +698,11 @@ final class RecorderModel: ObservableObject {
                 .appendingPathComponent("camera-background-\(UUID().uuidString)")
                 .appendingPathExtension(url.pathExtension)
             try FileManager.default.copyItem(at: url, to: destination)
-            if let old = cameraStyle.backgroundImagePath {
-                try? FileManager.default.removeItem(atPath: old)
+            // Only ever Pane's own copy: the path comes from saved settings.
+            if let old = cameraStyle.backgroundImagePath.map(URL.init(fileURLWithPath:)),
+               old.deletingLastPathComponent().standardizedFileURL == Self.supportFolder.standardizedFileURL,
+               old.lastPathComponent.hasPrefix("camera-background-") {
+                try? FileManager.default.removeItem(at: old)
             }
             cameraStyle.backgroundImagePath = destination.path
             cameraStyle.background = .image
